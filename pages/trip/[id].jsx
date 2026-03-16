@@ -132,11 +132,16 @@ export default function TripPage() {
   const [convertAmount, setConvertAmount] = useState('')
   const [convertDirection, setConvertDirection] = useState('foreign') // 'foreign' = foreign→THB, 'thb' = THB→foreign
 
-  // Budget tracker
-  const [budgetMap, setBudgetMap] = useState({}) // key: 'dayIdx-eventIdx', value: cost in foreign currency
-  const [editingBudget, setEditingBudget] = useState(null) // 'dayIdx-eventIdx'
-  const [budgetInput, setBudgetInput] = useState('')
-  const [showBudgetSummary, setShowBudgetSummary] = useState(false)
+  // Budget tracker — multi-expense per event
+  // Format: { 'dayIdx-eventIdx': [ { amount, currency, userEmail, userName, ts } ] }
+  const [expenses, setExpenses] = useState({})
+  const [addingExpense, setAddingExpense] = useState(null) // 'dayIdx-eventIdx'
+  const [expenseAmount, setExpenseAmount] = useState('')
+  const [expenseCurrency, setExpenseCurrency] = useState('') // auto-set from foreignCurrency
+
+  // Members
+  const [members, setMembers] = useState([])
+  const [showMembers, setShowMembers] = useState(false)
 
   const CURRENCY_MAP = {
     'japan': 'JPY', 'ญี่ปุ่น': 'JPY', 'tokyo': 'JPY', 'osaka': 'JPY', 'kyoto': 'JPY', 'kyushu': 'JPY', 'hokkaido': 'JPY', 'คิวชู': 'JPY', 'โตเกียว': 'JPY', 'โอซาก้า': 'JPY',
@@ -218,23 +223,57 @@ export default function TripPage() {
       if (savedNotes) setNoteMap(JSON.parse(savedNotes))
       if (savedImages) setNoteImages(JSON.parse(savedImages))
       const savedBudget = localStorage.getItem(`budget-${id}`)
-      if (savedBudget) try { setBudgetMap(JSON.parse(savedBudget)) } catch (e) { }
+      if (savedBudget) try {
+        const parsed = JSON.parse(savedBudget)
+        if (parsed && typeof parsed === 'object') {
+          const migrated = {}
+          Object.entries(parsed).forEach(([k, v]) => {
+            if (Array.isArray(v)) migrated[k] = v
+            else if (typeof v === 'number') migrated[k] = [{ amount: v, currency: 'JPY', userEmail: '', userName: 'Owner', ts: Date.now() }]
+          })
+          setExpenses(migrated)
+        }
+      } catch (e) { }
     }
   }, [session, id])
 
-  // Budget helpers
-  const saveBudget = (map) => { setBudgetMap(map); if (id) localStorage.setItem(`budget-${id}`, JSON.stringify(map)) }
-  const setBudgetForEvent = (dayIdx, eventIdx, cost) => {
+  // Expense helpers
+  const saveExpenses = (map) => { setExpenses(map); if (id) localStorage.setItem(`budget-${id}`, JSON.stringify(map)) }
+  const addExpenseEntry = (dayIdx, eventIdx) => {
+    const amt = parseFloat(expenseAmount)
+    if (!amt || amt <= 0) return
     const key = `${dayIdx}-${eventIdx}`
-    const map = { ...budgetMap }
-    if (cost > 0) map[key] = cost; else delete map[key]
-    saveBudget(map); setEditingBudget(null); setBudgetInput('')
+    const entry = {
+      amount: amt,
+      currency: expenseCurrency || foreignCurrency,
+      userEmail: session?.user?.email || '',
+      userName: session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'You',
+      ts: Date.now()
+    }
+    const map = { ...expenses }
+    map[key] = [...(map[key] || []), entry]
+    saveExpenses(map)
+    setAddingExpense(null); setExpenseAmount('')
   }
-  const getDayBudget = (dayIdx) => {
-    if (!plan?.days?.[dayIdx]) return 0
-    return plan.days[dayIdx].events.reduce((sum, _, ei) => sum + (budgetMap[`${dayIdx}-${ei}`] || 0), 0)
+  const removeExpenseEntry = (key, idx) => {
+    const map = { ...expenses }
+    map[key] = (map[key] || []).filter((_, i) => i !== idx)
+    if (map[key].length === 0) delete map[key]
+    saveExpenses(map)
   }
-  const getTotalBudget = () => Object.values(budgetMap).reduce((sum, v) => sum + v, 0)
+  const getDayTotal = (dayIdx) => {
+    if (!plan?.days?.[dayIdx]) return {}
+    const totals = {}
+    plan.days[dayIdx].events.forEach((_, ei) => {
+      (expenses[`${dayIdx}-${ei}`] || []).forEach(e => { totals[e.currency] = (totals[e.currency] || 0) + e.amount })
+    })
+    return totals
+  }
+  const getTotalByCurrency = () => {
+    const totals = {}
+    Object.values(expenses).flat().forEach(e => { totals[e.currency] = (totals[e.currency] || 0) + e.amount })
+    return totals
+  }
 
   // 3. Realtime
   useEffect(() => {
@@ -259,12 +298,13 @@ export default function TripPage() {
     if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
     const res = await fetch(`/api/trips/${id}`, { headers })
     if (!res.ok) { router.replace('/trips'); return }
-    const { trip: t, role } = await res.json()
+    const { trip: t, role, members: m } = await res.json()
     setTrip(t)
     setTripRole(role || 'viewer')
     const owner = role === 'owner'
     setIsOwner(owner)
     setIsMember(role === 'member')
+    if (m) setMembers(m)
     setDest(t.destination || '')
     setDates(t.dates || '')
     setNotes(t.notes || '')
@@ -1032,6 +1072,39 @@ export default function TripPage() {
         {showProposalForm && <ProposalFormSheet />}
         {showGaps && <FillGapsSheet />}
         {showTimeline && <TimelinePreview />}
+        {/* Members Modal */}
+        {showMembers && (
+          <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowMembers(false) }}>
+            <div className="modal-sheet">
+              <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+              <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '16px' }}>👥 สมาชิกทริป</div>
+              {members.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: '#94A3B8', fontSize: '14px' }}>
+                  ยังไม่มีสมาชิก · แชร์ลิงก์เพื่อเชิญเพื่อนร่วมทริป
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {members.map((m, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'rgba(14,165,233,0.04)', borderRadius: '12px', border: '1px solid rgba(14,165,233,0.08)' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'linear-gradient(135deg,#0EA5E9,#38BDF8)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: 'white', fontWeight: '800', flexShrink: 0 }}>
+                        {m.name?.[0]?.toUpperCase() || '?'}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: '#0C4A6E' }}>{m.name}</div>
+                        <div style={{ fontSize: '11px', color: '#64748B', marginTop: '1px' }}>{m.email}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '10px', fontWeight: '700', color: m.role === 'member' ? '#10B981' : '#94A3B8', textTransform: 'uppercase', background: m.role === 'member' ? 'rgba(16,185,129,0.1)' : 'rgba(148,163,184,0.1)', padding: '2px 8px', borderRadius: '6px' }}>{m.role}</div>
+                        <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '4px' }}>{new Date(m.joinedAt).toLocaleDateString('th-TH')}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button className="btn-ghost" style={{ width: '100%', marginTop: '16px' }} onClick={() => setShowMembers(false)}>ปิด</button>
+            </div>
+          </div>
+        )}
         {previewImage && (
           <div onClick={() => setPreviewImage(null)}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', padding: '20px' }}>
@@ -1128,6 +1201,15 @@ export default function TripPage() {
                   <button onClick={() => { setTempProvider(provider); setTempKey(apiKey); setShowSettings(true) }}
                     style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '15px', fontFamily: 'inherit' }}>
                     ⚙️
+                  </button>
+                  <button onClick={() => setShowMembers(true)}
+                    style={{ position: 'relative', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                    👥
+                    {members.length > 0 && (
+                      <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#10B981', borderRadius: '99px', width: '16px', height: '16px', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {members.length}
+                      </span>
+                    )}
                   </button>
                 </>
               )}
@@ -1266,21 +1348,40 @@ export default function TripPage() {
                           {ev.detail && <div style={{ fontSize: '12px', color: ev.warning ? '#d97706' : '#38BDF8', marginTop: '2px' }}>{ev.detail}</div>}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
                             <span style={{ display: 'inline-block', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: light, color: col, fontWeight: '700', border: `1px solid ${col}33` }}>{ev.type}</span>
-                            {/* Budget tag */}
+                            {/* Expense entries */}
+                            {(expenses[key] || []).map((exp, xi) => (
+                              <span key={xi} className="budget-tag" title={`${exp.userName} · ${new Date(exp.ts).toLocaleString('th-TH')}`}>
+                                💰 {exp.amount.toLocaleString()} {exp.currency}
+                                <span style={{ fontSize: '9px', opacity: 0.6, marginLeft: '2px' }}>({exp.userName?.split(' ')[0] || '?'})</span>
+                                {!isGuest && (
+                                  <span onClick={e => { e.stopPropagation(); removeExpenseEntry(key, xi) }}
+                                    style={{ cursor: 'pointer', marginLeft: '2px', opacity: 0.5, fontSize: '10px' }}>✕</span>
+                                )}
+                              </span>
+                            ))}
+                            {/* Add expense */}
                             {!isGuest && (
-                              editingBudget === key ? (
+                              addingExpense === key ? (
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }} onClick={e => e.stopPropagation()}>
-                                  <input type="number" value={budgetInput} onChange={e => setBudgetInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') setBudgetForEvent(activeDay, ei, parseFloat(budgetInput) || 0); if (e.key === 'Escape') setEditingBudget(null) }}
+                                  <input type="number" value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') addExpenseEntry(activeDay, ei); if (e.key === 'Escape') setAddingExpense(null) }}
                                     placeholder="0" autoFocus inputMode="decimal"
-                                    style={{ width: '70px', border: '1.5px solid #F59E0B', borderRadius: '6px', padding: '2px 6px', fontSize: '11px', outline: 'none', fontFamily: 'inherit', color: '#92400E' }} />
-                                  <span style={{ fontSize: '10px', color: '#92400E', fontWeight: '600' }}>{foreignCurrency}</span>
-                                  <button onClick={() => setBudgetForEvent(activeDay, ei, parseFloat(budgetInput) || 0)}
+                                    style={{ width: '65px', border: '1.5px solid #F59E0B', borderRadius: '6px', padding: '2px 6px', fontSize: '11px', outline: 'none', fontFamily: 'inherit', color: '#92400E' }} />
+                                  <select value={expenseCurrency || foreignCurrency} onChange={e => setExpenseCurrency(e.target.value)}
+                                    style={{ border: '1.5px solid #F59E0B', borderRadius: '6px', padding: '2px 3px', fontSize: '10px', color: '#92400E', background: 'white', fontFamily: 'inherit', cursor: 'pointer' }}>
+                                    <option value="THB">THB</option>
+                                    <option value={foreignCurrency}>{foreignCurrency}</option>
+                                    {!['THB', foreignCurrency].includes('USD') && <option value="USD">USD</option>}
+                                    {!['THB', foreignCurrency].includes('EUR') && <option value="EUR">EUR</option>}
+                                  </select>
+                                  <button onClick={() => addExpenseEntry(activeDay, ei)}
                                     style={{ background: '#F59E0B', color: 'white', border: 'none', borderRadius: '4px', padding: '1px 5px', fontSize: '10px', cursor: 'pointer', fontWeight: '700' }}>✓</button>
+                                  <button onClick={() => setAddingExpense(null)}
+                                    style={{ background: '#F1F5F9', color: '#64748b', border: 'none', borderRadius: '4px', padding: '1px 5px', fontSize: '10px', cursor: 'pointer' }}>✕</button>
                                 </div>
                               ) : (
-                                <span className="budget-tag" onClick={e => { e.stopPropagation(); setEditingBudget(key); setBudgetInput(budgetMap[key]?.toString() || '') }}>
-                                  💰 {budgetMap[key] ? `${budgetMap[key].toLocaleString()} ${foreignCurrency}` : 'ค่าใช้จ่าย'}
+                                <span className="budget-tag" onClick={e => { e.stopPropagation(); setAddingExpense(key); setExpenseAmount(''); setExpenseCurrency(foreignCurrency) }}>
+                                  + ค่าใช้จ่าย
                                 </span>
                               )
                             )}
@@ -1364,46 +1465,35 @@ export default function TripPage() {
             </div>
           </div>
 
-          {/* Day Budget Summary */}
-          {getDayBudget(activeDay) > 0 && (
+          {/* Day Expense Summary */}
+          {Object.keys(getDayTotal(activeDay)).length > 0 && (
             <div style={{ background: 'linear-gradient(135deg,rgba(255,251,235,0.9),rgba(254,243,199,0.9))', backdropFilter: 'blur(12px)', borderRadius: '16px', padding: '14px 16px', marginTop: '10px', border: '1px solid rgba(245,158,11,0.15)', boxShadow: '0 4px 15px rgba(245,158,11,0.08)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#92400E', fontWeight: '600', opacity: 0.7 }}>💰 งบวัน {plan.days[activeDay]?.day}</div>
-                  <div style={{ fontSize: '20px', fontWeight: '800', color: '#92400E', marginTop: '2px' }}>
-                    {getDayBudget(activeDay).toLocaleString()} <span style={{ fontSize: '13px', fontWeight: '600' }}>{foreignCurrency}</span>
+              <div style={{ fontSize: '11px', color: '#92400E', fontWeight: '600', opacity: 0.7, marginBottom: '4px' }}>💰 ค่าใช้จ่ายวัน {plan.days[activeDay]?.day}</div>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {Object.entries(getDayTotal(activeDay)).map(([cur, amt]) => (
+                  <div key={cur} style={{ fontSize: '18px', fontWeight: '800', color: '#92400E' }}>
+                    {amt.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: '600' }}>{cur}</span>
                   </div>
-                </div>
-                {exchangeRate && (
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '11px', color: '#92400E', opacity: 0.5 }}>≈ THB</div>
-                    <div style={{ fontSize: '16px', fontWeight: '700', color: '#B45309' }}>
-                      ฿{(getDayBudget(activeDay) * exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
-                    </div>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
           )}
 
-          {/* Total Trip Budget */}
-          {getTotalBudget() > 0 && (
+          {/* Total Trip Expenses */}
+          {Object.keys(getTotalByCurrency()).length > 0 && (
             <div style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.1),rgba(52,211,153,0.08))', backdropFilter: 'blur(12px)', borderRadius: '16px', padding: '14px 16px', marginTop: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#065F46', fontWeight: '600', opacity: 0.7 }}>📊 งบรวมทั้งทริป</div>
-                  <div style={{ fontSize: '20px', fontWeight: '800', color: '#065F46', marginTop: '2px' }}>
-                    {getTotalBudget().toLocaleString()} <span style={{ fontSize: '13px', fontWeight: '600' }}>{foreignCurrency}</span>
-                  </div>
-                </div>
-                {exchangeRate && (
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '11px', color: '#065F46', opacity: 0.5 }}>≈ THB</div>
-                    <div style={{ fontSize: '18px', fontWeight: '800', color: '#047857' }}>
-                      ฿{(getTotalBudget() * exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+              <div style={{ fontSize: '11px', color: '#065F46', fontWeight: '600', opacity: 0.7, marginBottom: '4px' }}>📊 ค่าใช้จ่ายรวมทั้งทริป</div>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                {Object.entries(getTotalByCurrency()).map(([cur, amt]) => (
+                  <div key={cur}>
+                    <div style={{ fontSize: '20px', fontWeight: '800', color: '#065F46' }}>
+                      {amt.toLocaleString()} <span style={{ fontSize: '13px', fontWeight: '600' }}>{cur}</span>
                     </div>
+                    {exchangeRate && cur === foreignCurrency && (
+                      <div style={{ fontSize: '11px', color: '#047857', opacity: 0.7 }}>≈ ฿{(amt * exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 0 })}</div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
             </div>
           )}

@@ -40,9 +40,32 @@ export default async function handler(req, res) {
       isMember = true
     }
 
+    // Fetch members list
+    let members = []
+    const { data: memberRows } = await admin
+      .from('trip_members')
+      .select('user_id, role, created_at')
+      .eq('trip_id', id)
+
+    if (memberRows?.length > 0) {
+      // Fetch user emails from auth.users
+      const { data: { users } } = await admin.auth.admin.listUsers()
+      const userMap = {}
+      users?.forEach(u => { userMap[u.id] = { email: u.email, name: u.user_metadata?.full_name || u.email?.split('@')[0] } })
+
+      members = memberRows.map(m => ({
+        userId: m.user_id,
+        role: m.role,
+        joinedAt: m.created_at,
+        email: userMap[m.user_id]?.email || 'Unknown',
+        name: userMap[m.user_id]?.name || 'Unknown',
+      }))
+    }
+
     return res.json({
       trip,
       role: isOwner ? 'owner' : isMember ? 'member' : 'viewer',
+      members,
     })
   }
 
