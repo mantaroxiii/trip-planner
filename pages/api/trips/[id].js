@@ -14,7 +14,13 @@ export default async function handler(req, res) {
     .single()
 
   if (fetchError || !trip) return res.status(404).json({ error: 'Not found' })
-  if (trip.owner_id !== user.id) return res.status(403).json({ error: 'Forbidden' })
+
+  const isOwner = trip.owner_id === user.id
+  if (!isOwner) {
+    // เพื่อนดูได้ถ้า trip มี share_code และเป็น GET เท่านั้น
+    if (!trip.share_code) return res.status(403).json({ error: 'Forbidden' })
+    if (req.method !== 'GET') return res.status(403).json({ error: 'Forbidden' })
+  }
 
   if (req.method === 'GET') {
     return res.json({ trip })

@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 
 const COLORS = ['#f472b6', '#60a5fa', '#fb923c', '#f87171', '#2dd4bf', '#c084fc', '#94a3b8']
-const LIGHT  = ['#fce7f3', '#dbeafe', '#ffedd5', '#fee2e2', '#ccfbf1', '#f3e8ff', '#f1f5f9']
+const LIGHT = ['#fce7f3', '#dbeafe', '#ffedd5', '#fee2e2', '#ccfbf1', '#f3e8ff', '#f1f5f9']
 
 const PROVIDERS = [
   { id: 'gemini', name: 'Gemini Flash', logo: '🔵', free: true, model: 'gemini-1.5-flash' },
@@ -50,7 +50,7 @@ export default function TripPage() {
   // 1. Auth check on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (!s) { router.replace('/login'); return }
+      if (!s) { router.replace(`/login?next=/trip/${router.query.id || ''}`); return }
       setSession(s)
       const p = localStorage.getItem('trip_provider') || 'gemini'
       const k = localStorage.getItem('trip_api_key') || ''
@@ -181,14 +181,14 @@ export default function TripPage() {
   }
 
   const S = {
-    app:      { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', minHeight: '100vh', background: '#f1f5f9' },
-    center:   { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px' },
-    label:    { fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px', display: 'block' },
-    input:    { width: '100%', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px', fontSize: '14px', outline: 'none', marginBottom: '14px', boxSizing: 'border-box', fontFamily: 'inherit', color: '#1e293b' },
+    app: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', minHeight: '100vh', background: '#f1f5f9' },
+    center: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px' },
+    label: { fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px', display: 'block' },
+    input: { width: '100%', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px', fontSize: '14px', outline: 'none', marginBottom: '14px', boxSizing: 'border-box', fontFamily: 'inherit', color: '#1e293b' },
     textarea: { width: '100%', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px', fontSize: '14px', outline: 'none', resize: 'vertical', minHeight: '180px', lineHeight: '1.7', fontFamily: 'inherit', boxSizing: 'border-box', color: '#1e293b' },
-    btn:      { width: '100%', background: '#1e293b', color: 'white', border: 'none', borderRadius: '12px', padding: '14px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' },
+    btn: { width: '100%', background: '#1e293b', color: 'white', border: 'none', borderRadius: '12px', padding: '14px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' },
     btnGhost: { background: 'none', border: '1.5px solid #e2e8f0', color: '#64748b', borderRadius: '10px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' },
-    error:    { background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '10px 14px', borderRadius: '10px', fontSize: '13px', marginTop: '10px' },
+    error: { background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '10px 14px', borderRadius: '10px', fontSize: '13px', marginTop: '10px' },
   }
 
   /* ── SETTINGS MODAL ── */
@@ -329,11 +329,11 @@ export default function TripPage() {
 
   /* ── PLAN ── */
   if (step === 'plan' && plan) {
-    const day   = plan.days[activeDay]
-    const col   = COLORS[activeDay % COLORS.length]
+    const day = plan.days[activeDay]
+    const col = COLORS[activeDay % COLORS.length]
     const light = LIGHT[activeDay % LIGHT.length]
     const total = plan.days.reduce((s, d) => s + d.events.length, 0)
-    const done  = Object.values(checked).filter(Boolean).length
+    const done = Object.values(checked).filter(Boolean).length
 
     return (
       <div style={S.app}>
