@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 
-const COLORS = ['#f472b6', '#60a5fa', '#fb923c', '#f87171', '#2dd4bf', '#c084fc', '#94a3b8']
-const LIGHT = ['#fce7f3', '#dbeafe', '#ffedd5', '#fee2e2', '#ccfbf1', '#f3e8ff', '#f1f5f9']
+const COLORS = ['#0EA5E9', '#8B5CF6', '#F97316', '#10B981', '#EC4899', '#F59E0B', '#6366F1']
+const LIGHT = ['#E0F2FE', '#EDE9FE', '#FFF7ED', '#D1FAE5', '#FCE7F3', '#FEF3C7', '#EEF2FF']
 
 const PROVIDERS = [
   { id: 'gemini', name: 'Gemini Flash', logo: '🔵', free: true, model: 'gemini-1.5-flash' },
@@ -17,7 +17,9 @@ export default function TripPage() {
 
   const [session, setSession] = useState(null)
   const [trip, setTrip] = useState(null)
-  const [step, setStep] = useState('loading') // loading | draft | generating | plan
+  const [step, setStep] = useState('loading')
+  const [isOwner, setIsOwner] = useState(false)
+  const [isGuest, setIsGuest] = useState(false)
 
   // Draft fields
   const [destination, setDest] = useState('')
@@ -32,13 +34,38 @@ export default function TripPage() {
   const [noteMap, setNoteMap] = useState({})
   const [showNote, setShowNote] = useState({})
 
+  // Inline edit
+  const [editingKey, setEditingKey] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editTime, setEditTime] = useState('')
+  const [editDetail, setEditDetail] = useState('')
+
+  // AI Suggestion
+  const [suggestingKey, setSuggestingKey] = useState(null)
+  const [suggestions, setSuggestions] = useState([])
+  const [suggestLoading, setSuggestLoading] = useState(false)
+
+  // Proposals (Submit/Approve)
+  const [proposals, setProposals] = useState([])
+  const [showProposals, setShowProposals] = useState(false)
+  const [proposalDesc, setProposalDesc] = useState('')
+  const [proposalLoading, setProposalLoading] = useState(false)
+  const [showProposalForm, setShowProposalForm] = useState(false)
+  const [proposalLocalPlan, setProposalLocalPlan] = useState(null)
+
+  // Packing list
+  const [packingList, setPackingList] = useState(null)
+  const [packingLoading, setPackingLoading] = useState(false)
+  const [showPacking, setShowPacking] = useState(false)
+
   // UI state
   const [error, setError] = useState('')
   const [shareToast, setShareToast] = useState(false)
   const [editNotif, setEditNotif] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [confirmGenerate, setConfirmGenerate] = useState(false)
 
-  // AI provider settings
+  // AI provider
   const [provider, setProvider] = useState('gemini')
   const [apiKey, setApiKey] = useState('')
   const [tempProvider, setTempProvider] = useState('gemini')
@@ -47,18 +74,19 @@ export default function TripPage() {
   const saveTimer = useRef(null)
   const prov = PROVIDERS.find(p => p.id === provider) || PROVIDERS[0]
 
-  // 1. Auth check on mount
+  // 1. Auth check
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       if (!s) { router.replace(`/login?next=/trip/${router.query.id || ''}`); return }
       setSession(s)
+      setIsGuest(s.user.is_anonymous === true)
       const p = localStorage.getItem('trip_provider') || 'gemini'
       const k = localStorage.getItem('trip_api_key') || ''
       setProvider(p); setTempProvider(p); setApiKey(k); setTempKey(k)
     })
   }, [])
 
-  // 2. Load trip when session + id ready
+  // 2. Load trip
   useEffect(() => {
     if (!session || !id) return
     loadTrip()
@@ -68,17 +96,12 @@ export default function TripPage() {
     if (savedNotes) setNoteMap(JSON.parse(savedNotes))
   }, [session, id])
 
-  // 3. Real-time subscription
+  // 3. Realtime
   useEffect(() => {
     if (!trip?.id) return
     const channel = supabase
       .channel(`trip-${trip.id}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'trips',
-        filter: `id=eq.${trip.id}`,
-      }, (payload) => {
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips', filter: `id=eq.${trip.id}` }, (payload) => {
         const updated = payload.new
         if (updated.plan_json && JSON.stringify(updated.plan_json) !== JSON.stringify(plan)) {
           setPlan(updated.plan_json)
@@ -87,8 +110,7 @@ export default function TripPage() {
           setEditNotif('✏️ มีการอัปเดต plan')
           setTimeout(() => setEditNotif(''), 4000)
         }
-      })
-      .subscribe()
+      }).subscribe()
     return () => supabase.removeChannel(channel)
   }, [trip?.id])
 
@@ -99,18 +121,77 @@ export default function TripPage() {
     if (!res.ok) { router.replace('/trips'); return }
     const { trip: t } = await res.json()
     setTrip(t)
+    const owner = t.owner_id === session.user.id
+    setIsOwner(owner)
     setDest(t.destination || '')
     setDates(t.dates || '')
     setNotes(t.notes || '')
-    if (t.plan_json) {
-      setPlan(t.plan_json)
-      setStep('plan')
-    } else {
-      setStep('draft')
+    if (t.plan_json) { setPlan(t.plan_json); setStep('plan') }
+    else { setStep('draft') }
+    if (owner) loadProposals(t.id)
+  }
+
+  const loadProposals = async (tripId) => {
+    const res = await fetch(`/api/proposals?tripId=${tripId}`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+    if (res.ok) { const d = await res.json(); setProposals(d.proposals || []) }
+  }
+
+  const submitProposal = async () => {
+    if (!proposalLocalPlan) return
+    setProposalLoading(true)
+    try {
+      const res = await fetch('/api/proposals', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trip_id: id, plan_json: proposalLocalPlan, description: proposalDesc || 'เสนอแก้ไข plan' }),
+      })
+      if (res.ok) {
+        setShowProposalForm(false)
+        setProposalLocalPlan(null)
+        setProposalDesc('')
+        setEditNotif('✅ ส่ง proposal ให้เจ้าของแล้ว!')
+        setTimeout(() => setEditNotif(''), 4000)
+      }
+    } catch (e) { /* ignore */ }
+    setProposalLoading(false)
+  }
+
+  const handleApproveReject = async (proposalId, status) => {
+    const res = await fetch(`/api/proposals/${proposalId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    if (res.ok) {
+      setProposals(prev => prev.map(p => p.id === proposalId ? { ...p, status } : p))
+      if (status === 'approved') {
+        loadTrip()
+        setEditNotif('✅ Approved! Plan อัปเดตแล้ว')
+        setTimeout(() => setEditNotif(''), 4000)
+        setShowProposals(false)
+      }
     }
   }
 
+  const generatePacking = async () => {
+    if (!plan) return
+    setPackingLoading(true)
+    try {
+      const res = await fetch('/api/packing', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination, dates, plan }),
+      })
+      const data = await res.json()
+      if (data.categories) { setPackingList(data.categories); setShowPacking(true) }
+    } catch (e) { /* ignore */ }
+    setPackingLoading(false)
+  }
+
   const autoSaveDraft = (dest, dt, n) => {
+    if (!isOwner) return
     clearTimeout(saveTimer.current)
     setSaving(true)
     saveTimer.current = setTimeout(async () => {
@@ -123,25 +204,21 @@ export default function TripPage() {
     }, 1000)
   }
 
-  const generate = async () => {
+  const doGenerate = async () => {
+    setConfirmGenerate(false)
     if (provider !== 'gemini' && !apiKey) { setShowSettings(true); return }
     setStep('generating'); setError('')
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apiKey: provider === 'gemini' ? null : apiKey,
-          provider, destination, dates, notes,
-        }),
+        body: JSON.stringify({ apiKey: provider === 'gemini' ? null : apiKey, provider, destination, dates, notes }),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-
       setPlan(data); setActiveDay(0); setChecked({}); setNoteMap({})
       localStorage.removeItem(`checked-${id}`)
       localStorage.removeItem(`notes-${id}`)
-
       await fetch(`/api/trips/${id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
@@ -149,9 +226,71 @@ export default function TripPage() {
       })
       setStep('plan')
     } catch (e) {
-      setError(e.message)
-      setStep('draft')
+      setError(e.message); setStep('draft')
     }
+  }
+
+  const handleGenerate = () => {
+    if (plan) { setConfirmGenerate(true) } else { doGenerate() }
+  }
+
+  // Inline edit save
+  const saveInlineEdit = async (dayIdx, evIdx) => {
+    const newPlan = JSON.parse(JSON.stringify(plan))
+    newPlan.days[dayIdx].events[evIdx] = {
+      ...newPlan.days[dayIdx].events[evIdx],
+      title: editTitle,
+      time: editTime,
+      detail: editDetail,
+    }
+    setPlan(newPlan)
+    setEditingKey(null)
+    await fetch(`/api/trips/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_json: newPlan }),
+    })
+  }
+
+  // AI Suggestion
+  const fetchSuggestions = async (dayIdx, evIdx) => {
+    const key = `${dayIdx}-${evIdx}`
+    setSuggestingKey(key)
+    setSuggestLoading(true)
+    setSuggestions([])
+    try {
+      const day = plan.days[dayIdx]
+      const ev = day.events[evIdx]
+      const res = await fetch('/api/suggest', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destination, dates,
+          dayTitle: day.title,
+          currentActivity: ev,
+          otherActivities: day.events.filter((_, i) => i !== evIdx),
+        }),
+      })
+      const data = await res.json()
+      if (data.suggestions) setSuggestions(data.suggestions)
+    } catch (e) { setSuggestingKey(null) }
+    setSuggestLoading(false)
+  }
+
+  const applySuggestion = async (dayIdx, evIdx, sug) => {
+    const newPlan = JSON.parse(JSON.stringify(plan))
+    newPlan.days[dayIdx].events[evIdx] = {
+      ...newPlan.days[dayIdx].events[evIdx],
+      ...sug,
+    }
+    setPlan(newPlan)
+    setSuggestingKey(null)
+    setSuggestions([])
+    await fetch(`/api/trips/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_json: newPlan }),
+    })
   }
 
   const copyShareLink = () => {
@@ -180,154 +319,297 @@ export default function TripPage() {
     localStorage.setItem(`notes-${id}`, JSON.stringify(next))
   }
 
-  const S = {
-    app: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', minHeight: '100vh', background: '#f1f5f9' },
-    center: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px' },
-    label: { fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px', display: 'block' },
-    input: { width: '100%', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px', fontSize: '14px', outline: 'none', marginBottom: '14px', boxSizing: 'border-box', fontFamily: 'inherit', color: '#1e293b' },
-    textarea: { width: '100%', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px', fontSize: '14px', outline: 'none', resize: 'vertical', minHeight: '180px', lineHeight: '1.7', fontFamily: 'inherit', boxSizing: 'border-box', color: '#1e293b' },
-    btn: { width: '100%', background: '#1e293b', color: 'white', border: 'none', borderRadius: '12px', padding: '14px', fontSize: '15px', fontWeight: '600', cursor: 'pointer' },
-    btnGhost: { background: 'none', border: '1.5px solid #e2e8f0', color: '#64748b', borderRadius: '10px', padding: '8px 14px', fontSize: '13px', cursor: 'pointer' },
-    error: { background: '#fee2e2', border: '1px solid #fca5a5', color: '#b91c1c', padding: '10px 14px', borderRadius: '10px', fontSize: '13px', marginTop: '10px' },
-  }
+  const globalStyle = `
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; }
+    body { font-family: 'Plus Jakarta Sans', -apple-system, sans-serif; }
+    .trip-input { width:100%; border:1.5px solid rgba(14,165,233,0.2); border-radius:12px; padding:10px 14px; font-size:14px; outline:none; background:rgba(255,255,255,0.7); font-family:inherit; color:#0C4A6E; transition:border-color 0.2s; backdrop-filter:blur(4px); }
+    .trip-input:focus { border-color:#0EA5E9; }
+    .trip-input::placeholder { color:#BAE6FD; }
+    .trip-textarea { width:100%; border:1.5px solid rgba(14,165,233,0.2); border-radius:12px; padding:12px 14px; font-size:14px; outline:none; resize:vertical; min-height:180px; font-family:inherit; color:#0C4A6E; background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); transition:border-color 0.2s; }
+    .trip-textarea:focus { border-color:#0EA5E9; }
+    .btn-primary { background:linear-gradient(135deg,#0EA5E9,#38BDF8); color:white; border:none; border-radius:12px; padding:13px 20px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; transition:all 0.2s; }
+    .btn-primary:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 6px 20px rgba(14,165,233,0.35); }
+    .btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
+    .btn-ghost { background:rgba(255,255,255,0.6); border:1.5px solid rgba(14,165,233,0.2); color:#0C4A6E; border-radius:10px; padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.2s; backdrop-filter:blur(4px); }
+    .btn-ghost:hover { background:white; border-color:#0EA5E9; }
+    .event-card { background:rgba(255,255,255,0.8); border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(14,165,233,0.08); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.9); transition:all 0.2s; }
+    .event-card:hover { box-shadow:0 4px 16px rgba(14,165,233,0.14); transform:translateY(-1px); }
+    .icon-btn { background:none; border:none; cursor:pointer; padding:4px; border-radius:6px; transition:all 0.15s; display:flex; align-items:center; justify-content:center; }
+    .icon-btn:hover { background:rgba(14,165,233,0.1); }
+    .day-tab { flex-shrink:0; padding:8px 13px; border-radius:12px; border:2px solid transparent; cursor:pointer; text-align:center; font-size:11px; font-weight:600; transition:all 0.2s; font-family:inherit; }
+    .modal-overlay { position:fixed; inset:0; background:rgba(12,74,110,0.3); backdrop-filter:blur(4px); z-index:999; display:flex; align-items:flex-end; justify-content:center; }
+    .modal-sheet { background:rgba(255,255,255,0.95); backdrop-filter:blur(20px); border-radius:24px 24px 0 0; padding:24px 20px 40px; width:100%; max-width:540px; border:1px solid rgba(255,255,255,0.9); }
+  `
 
-  /* ── SETTINGS MODAL ── */
-  const SettingsModal = () => (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-      onClick={e => { if (e.target === e.currentTarget) setShowSettings(false) }}
-    >
-      <div style={{ background: 'white', borderRadius: '20px 20px 0 0', padding: '24px 20px 36px', width: '100%', maxWidth: '500px' }}>
-        <div style={{ width: '40px', height: '4px', background: '#e2e8f0', borderRadius: '99px', margin: '0 auto 20px' }} />
-        <div style={{ fontSize: '17px', fontWeight: '700', color: '#1e293b', marginBottom: '6px' }}>⚙️ ตั้งค่า AI</div>
-        <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '18px' }}>
-          Gemini Flash ใช้ได้ฟรี (shared key) · Claude / OpenAI ต้องใส่ key เอง
+  /* ─── LOADING ─── */
+  if (step === 'loading') return (
+    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", minHeight: '100vh', background: 'linear-gradient(135deg,#F0F9FF,#E0F2FE,#BAE6FD)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <style>{globalStyle}</style>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '52px', display: 'inline-block', animation: 'float 1.5s ease-in-out infinite' }}>✈️</div>
+        <style>{`@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}`}</style>
+      </div>
+    </div>
+  )
+
+  /* ─── GENERATING ─── */
+  if (step === 'generating') return (
+    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", minHeight: '100vh', background: 'linear-gradient(135deg,#F0F9FF,#E0F2FE,#BAE6FD)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <style>{globalStyle}</style>
+      <div style={{ textAlign: 'center', padding: '20px' }}>
+        <div style={{ fontSize: '56px', display: 'inline-block', animation: 'float 1.5s ease-in-out infinite' }}>✈️</div>
+        <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginTop: '20px' }}>AI กำลังจัด plan ให้...</div>
+        <div style={{ fontSize: '14px', color: '#38BDF8', marginTop: '8px' }}>ใช้เวลาประมาณ 15–20 วินาที</div>
+        <div style={{ marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(10px)', borderRadius: '99px', padding: '8px 18px', boxShadow: '0 2px 12px rgba(14,165,233,0.15)', border: '1px solid rgba(255,255,255,0.8)' }}>
+          <span>{prov.logo}</span>
+          <span style={{ fontSize: '12px', color: '#0C4A6E', fontWeight: '600' }}>{prov.name} · {prov.model}</span>
         </div>
+      </div>
+      <style>{`@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}`}</style>
+    </div>
+  )
 
-        <label style={S.label}>เลือก AI</label>
+  /* ─── CONFIRM MODAL ─── */
+  const ConfirmModal = () => (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setConfirmGenerate(false) }}>
+      <div className="modal-sheet">
+        <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+        <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '8px' }}>⚠️ Generate ใหม่?</div>
+        <div style={{ fontSize: '14px', color: '#38BDF8', marginBottom: '24px', lineHeight: '1.6' }}>
+          Trip นี้มี plan อยู่แล้ว ถ้า Generate ใหม่ plan เดิมจะถูกลบและแทนที่ด้วยเวอร์ชันใหม่
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="btn-ghost" style={{ flex: 1 }} onClick={() => setConfirmGenerate(false)}>ยกเลิก</button>
+          <button className="btn-primary" style={{ flex: 2 }} onClick={doGenerate}>Generate ใหม่</button>
+        </div>
+      </div>
+    </div>
+  )
+
+  /* ─── SETTINGS MODAL ─── */
+  const SettingsModal = () => (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowSettings(false) }}>
+      <div className="modal-sheet">
+        <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#0C4A6E', marginBottom: '5px' }}>⚙️ ตั้งค่า AI</div>
+        <div style={{ fontSize: '13px', color: '#38BDF8', marginBottom: '18px' }}>Gemini Flash ใช้ได้ฟรี · Claude / OpenAI ต้องใส่ key เอง</div>
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
           {PROVIDERS.map(p => (
             <button key={p.id} onClick={() => { setTempProvider(p.id); setTempKey('') }}
-              style={{ flex: 1, padding: '10px 8px', borderRadius: '10px', border: `2px solid ${tempProvider === p.id ? '#1e293b' : '#e2e8f0'}`, background: tempProvider === p.id ? '#1e293b' : 'white', color: tempProvider === p.id ? 'white' : '#64748b', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>
+              style={{ flex: 1, padding: '10px 8px', borderRadius: '12px', border: `2px solid ${tempProvider === p.id ? '#0EA5E9' : 'rgba(14,165,233,0.2)'}`, background: tempProvider === p.id ? 'linear-gradient(135deg,#0EA5E9,#38BDF8)' : 'rgba(255,255,255,0.7)', color: tempProvider === p.id ? 'white' : '#0C4A6E', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit', transition: 'all 0.2s' }}>
               <div style={{ fontSize: '18px', marginBottom: '2px' }}>{p.logo}</div>
               {p.name}
-              {p.free && <div style={{ fontSize: '10px', color: tempProvider === p.id ? '#86efac' : '#16a34a', marginTop: '2px' }}>ฟรี</div>}
+              {p.free && <div style={{ fontSize: '10px', color: tempProvider === p.id ? '#86efac' : '#0EA5E9', marginTop: '2px' }}>ฟรี</div>}
             </button>
           ))}
         </div>
-
         {tempProvider !== 'gemini' && (() => {
           const tp = PROVIDERS.find(p => p.id === tempProvider)
           return (
             <>
-              <label style={S.label}>{tp.name} API Key</label>
-              <input style={S.input} type="password" placeholder={tp.placeholder}
-                value={tempKey} onChange={e => setTempKey(e.target.value)} />
-              <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '16px', marginTop: '-8px' }}>
-                ขอ key ได้ที่{' '}
-                <a href={tp.hintUrl} target="_blank" rel="noreferrer" style={{ color: '#3b82f6' }}>{tp.hintUrl.replace('https://', '')}</a>
+              <label style={{ fontSize: '13px', fontWeight: '600', color: '#0C4A6E', display: 'block', marginBottom: '6px' }}>{tp.name} API Key</label>
+              <input className="trip-input" type="password" placeholder={tp.placeholder}
+                value={tempKey} onChange={e => setTempKey(e.target.value)} style={{ marginBottom: '8px' }} />
+              <p style={{ fontSize: '12px', color: '#BAE6FD', marginBottom: '16px' }}>
+                ขอ key ได้ที่ <a href={tp.hintUrl} target="_blank" rel="noreferrer" style={{ color: '#0EA5E9' }}>{tp.hintUrl.replace('https://', '')}</a>
               </p>
             </>
           )
         })()}
-
-        <button
-          style={{ ...S.btn, opacity: (tempProvider === 'gemini' || tempKey) ? 1 : 0.4 }}
-          disabled={tempProvider !== 'gemini' && !tempKey}
-          onClick={saveSettings}
-        >
-          บันทึก
-        </button>
+        <button className="btn-primary" style={{ width: '100%', opacity: (tempProvider === 'gemini' || tempKey) ? 1 : 0.4 }}
+          disabled={tempProvider !== 'gemini' && !tempKey} onClick={saveSettings}>บันทึก</button>
       </div>
     </div>
   )
 
-  /* ── LOADING ── */
-  if (step === 'loading') return (
-    <div style={S.app}>
-      <div style={S.center}>
-        <div style={{ fontSize: '48px', display: 'inline-block', animation: 'float 1.5s ease-in-out infinite' }}>✈️</div>
-        <style>{`@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }`}</style>
-      </div>
-    </div>
-  )
-
-  /* ── GENERATING ── */
-  if (step === 'generating') return (
-    <div style={S.app}>
-      <div style={S.center}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '52px', marginBottom: '16px', display: 'inline-block', animation: 'float 1.5s ease-in-out infinite' }}>✈️</div>
-          <div style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>AI กำลังจัด plan ให้...</div>
-          <div style={{ fontSize: '14px', color: '#64748b', marginTop: '8px' }}>ใช้เวลาประมาณ 15–20 วินาที</div>
-          <div style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'white', borderRadius: '99px', padding: '6px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-            <span>{prov.logo}</span>
-            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>{prov.name} · {prov.model}</span>
+  /* ─── AI SUGGESTION SHEET ─── */
+  const SuggestionSheet = ({ dayIdx, evIdx }) => (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setSuggestingKey(null) }}>
+      <div className="modal-sheet">
+        <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#0C4A6E', marginBottom: '5px' }}>✨ AI Suggestion</div>
+        <div style={{ fontSize: '13px', color: '#38BDF8', marginBottom: '18px' }}>
+          แทน "{plan.days[dayIdx].events[evIdx].title}" ด้วย...
+        </div>
+        {suggestLoading ? (
+          <div style={{ textAlign: 'center', padding: '30px 0', color: '#38BDF8', fontSize: '14px' }}>
+            <div style={{ fontSize: '32px', marginBottom: '12px', display: 'inline-block', animation: 'float 1.5s ease-in-out infinite' }}>✨</div>
+            <div>AI กำลังคิด...</div>
           </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {suggestions.map((sug, i) => (
+              <button key={i} onClick={() => applySuggestion(dayIdx, evIdx, sug)}
+                style={{ background: 'rgba(255,255,255,0.8)', border: '1.5px solid rgba(14,165,233,0.15)', borderRadius: '14px', padding: '14px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', transition: 'all 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#0EA5E9'; e.currentTarget.style.background = 'white' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(14,165,233,0.15)'; e.currentTarget.style.background = 'rgba(255,255,255,0.8)' }}>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: '24px', flexShrink: 0 }}>{sug.icon}</span>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#0C4A6E' }}>{sug.time} · {sug.title}</div>
+                    {sug.detail && <div style={{ fontSize: '12px', color: '#38BDF8', marginTop: '3px' }}>{sug.detail}</div>}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+        <button className="btn-ghost" style={{ width: '100%', marginTop: '14px' }} onClick={() => setSuggestingKey(null)}>ปิด</button>
+      </div>
+    </div>
+  )
+
+  /* ─── PROPOSALS SHEET ─── */
+  const ProposalsSheet = () => (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowProposals(false) }}>
+      <div className="modal-sheet" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#0C4A6E', marginBottom: '5px' }}>🔔 ข้อเสนอแก้ไข</div>
+        <div style={{ fontSize: '13px', color: '#38BDF8', marginBottom: '18px' }}>{proposals.filter(p => p.status === 'pending').length} รายการรอพิจารณา</div>
+        {proposals.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '30px 0', color: '#BAE6FD', fontSize: '14px' }}>ยังไม่มีข้อเสนอแก้ไข</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {proposals.map(p => (
+              <div key={p.id} style={{ background: 'rgba(255,255,255,0.8)', border: `1.5px solid ${p.status === 'pending' ? 'rgba(14,165,233,0.2)' : p.status === 'approved' ? '#86efac' : '#fca5a5'}`, borderRadius: '14px', padding: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E' }}>{p.proposer_name}</div>
+                    <div style={{ fontSize: '12px', color: '#38BDF8' }}>{p.description}</div>
+                  </div>
+                  <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '99px', fontWeight: '700', background: p.status === 'pending' ? '#E0F2FE' : p.status === 'approved' ? '#dcfce7' : '#fee2e2', color: p.status === 'pending' ? '#0284C7' : p.status === 'approved' ? '#15803d' : '#b91c1c' }}>
+                    {p.status === 'pending' ? 'รอ' : p.status === 'approved' ? '✅' : '❌'}
+                  </span>
+                </div>
+                {p.status === 'pending' && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                    <button className="btn-ghost" style={{ flex: 1, padding: '8px', fontSize: '13px', color: '#b91c1c', borderColor: '#fca5a5' }} onClick={() => handleApproveReject(p.id, 'rejected')}>❌ ปฏิเสธ</button>
+                    <button className="btn-primary" style={{ flex: 2, padding: '8px', fontSize: '13px' }} onClick={() => handleApproveReject(p.id, 'approved')}>✅ Approve & Merge</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="btn-ghost" style={{ width: '100%', marginTop: '14px' }} onClick={() => setShowProposals(false)}>ปิด</button>
+      </div>
+    </div>
+  )
+
+  /* ─── PACKING LIST SHEET ─── */
+  const PackingSheet = () => (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowPacking(false) }}>
+      <div className="modal-sheet" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#0C4A6E', marginBottom: '5px' }}>🧳 Packing List</div>
+        <div style={{ fontSize: '13px', color: '#38BDF8', marginBottom: '18px' }}>AI แนะนำสิ่งของสำหรับ {destination}</div>
+        {packingList && packingList.map((cat, ci) => (
+          <div key={ci} style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '800', color: '#0C4A6E', marginBottom: '8px' }}>{cat.icon} {cat.name}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {cat.items.map((item, ii) => (
+                <span key={ii} style={{ background: 'rgba(14,165,233,0.08)', border: '1.5px solid rgba(14,165,233,0.15)', borderRadius: '99px', padding: '4px 12px', fontSize: '12px', color: '#0C4A6E', fontWeight: '500' }}>{item}</span>
+              ))}
+            </div>
+          </div>
+        ))}
+        <button className="btn-ghost" style={{ width: '100%', marginTop: '8px' }} onClick={() => setShowPacking(false)}>ปิด</button>
+      </div>
+    </div>
+  )
+
+  /* ─── PROPOSAL FORM SHEET (for non-owner) ─── */
+  const ProposalFormSheet = () => (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowProposalForm(false) }}>
+      <div className="modal-sheet">
+        <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#0C4A6E', marginBottom: '8px' }}>📤 เสนอแก้ไข Plan</div>
+        <div style={{ fontSize: '13px', color: '#38BDF8', marginBottom: '18px', lineHeight: '1.6' }}>
+          เจ้าของ trip จะได้รับการแจ้งเตือนและสามารถ Approve หรือ Reject ได้
+        </div>
+        <label style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E', display: 'block', marginBottom: '6px' }}>บอกว่าแก้อะไร</label>
+        <input className="trip-input" placeholder="เช่น เพิ่มร้านอาหารวันที่ 2 และปรับเวลา" value={proposalDesc}
+          onChange={e => setProposalDesc(e.target.value)} style={{ marginBottom: '16px' }} />
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="btn-ghost" style={{ flex: 1 }} onClick={() => setShowProposalForm(false)}>ยกเลิก</button>
+          <button className="btn-primary" style={{ flex: 2, opacity: proposalLoading ? 0.6 : 1 }}
+            disabled={proposalLoading} onClick={submitProposal}>
+            {proposalLoading ? 'กำลังส่ง...' : '📤 ส่ง Proposal'}
+          </button>
         </div>
       </div>
-      <style>{`@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }`}</style>
     </div>
   )
 
-  /* ── DRAFT ── */
+  /* ─── DRAFT ─── */
   if (step === 'draft') return (
-    <div style={S.app}>
+    <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", minHeight: '100vh', background: 'linear-gradient(135deg,#F0F9FF,#E0F2FE,#BAE6FD)' }}>
+      <style>{globalStyle}</style>
       {showSettings && <SettingsModal />}
+      {confirmGenerate && <ConfirmModal />}
+
+      {/* Guest Banner */}
+      {!isOwner && (
+        <div style={{ background: 'linear-gradient(135deg,#F97316,#FB923C)', color: 'white', padding: '10px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>
+          {isGuest ? '👁️ คุณกำลังดูในฐานะ Guest · ' : '👥 คุณเป็น Viewer · '}
+          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => router.push(`/login?next=/trip/${id}`)}>
+            {isGuest ? 'สมัครสมาชิกเพื่อแก้ไขร่วมกัน →' : 'Login เพื่อแก้ไข →'}
+          </span>
+        </div>
+      )}
+
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '16px' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button onClick={() => router.push('/trips')} style={{ ...S.btnGhost, padding: '6px 10px' }}>← Trips</button>
-            <div style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b' }}>✈️ Trip Planner</div>
+            <button onClick={() => router.push('/trips')} className="btn-ghost" style={{ padding: '6px 10px' }}>← Trips</button>
+            <div style={{ fontSize: '17px', fontWeight: '800', color: '#0C4A6E' }}>✈️ Trip Planner</div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {saving && <span style={{ fontSize: '11px', color: '#94a3b8' }}>กำลังบันทึก...</span>}
-            {plan && <button style={S.btnGhost} onClick={() => setStep('plan')}>ดู Plan</button>}
-            <button
-              onClick={() => { setTempProvider(provider); setTempKey(apiKey); setShowSettings(true) }}
-              style={{ background: provider === 'gemini' ? '#f0fdf4' : '#fff7ed', border: `1.5px solid ${provider === 'gemini' ? '#86efac' : '#fed7aa'}`, color: provider === 'gemini' ? '#15803d' : '#c2410c', borderRadius: '10px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer', fontWeight: '600' }}
-            >
-              {prov.logo} {prov.name} {provider !== 'gemini' && (apiKey ? '✓' : '!')}
-            </button>
+            {saving && <span style={{ fontSize: '11px', color: '#38BDF8' }}>กำลังบันทึก...</span>}
+            {plan && <button className="btn-ghost" onClick={() => setStep('plan')}>ดู Plan</button>}
+            {isOwner && (
+              <button onClick={() => { setTempProvider(provider); setTempKey(apiKey); setShowSettings(true) }}
+                style={{ background: provider === 'gemini' ? 'rgba(14,165,233,0.1)' : '#fff7ed', border: `1.5px solid ${provider === 'gemini' ? '#0EA5E9' : '#fed7aa'}`, color: provider === 'gemini' ? '#0284C7' : '#c2410c', borderRadius: '10px', padding: '7px 12px', fontSize: '13px', cursor: 'pointer', fontWeight: '600', fontFamily: 'inherit' }}>
+                {prov.logo} {prov.name}
+              </button>
+            )}
           </div>
         </div>
 
-        <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '12px' }}>
-          <label style={S.label}>ปลายทาง</label>
-          <input style={S.input} placeholder="เช่น คิวชู ญี่ปุ่น" value={destination}
-            onChange={e => { setDest(e.target.value); autoSaveDraft(e.target.value, dates, notes) }} />
-
-          <label style={S.label}>ช่วงเวลา</label>
-          <input style={S.input} placeholder="เช่น 1-7 เมษายน 2568 (7 วัน)" value={dates}
-            onChange={e => { setDates(e.target.value); autoSaveDraft(destination, e.target.value, notes) }} />
-
-          <label style={S.label}>Note / ไอเดียทั้งหมด</label>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
-            พิมพ์ทุกอย่างที่รู้ ไม่ต้องเป็นระเบียบ — ร้านอาหาร, สถานที่, YouTube link, คำแนะนำจากเพื่อน
-          </div>
-          <textarea style={S.textarea} value={notes}
-            placeholder={'ตัวอย่าง:\n- อยากไป Yufuin\n- ต้องลอง ramen ที่ Fukuoka\n- Takachiho Gorge สวยมาก'}
+        <div style={{ background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(16px)', border: '1.5px solid rgba(255,255,255,0.9)', borderRadius: '20px', padding: '22px', boxShadow: '0 4px 20px rgba(14,165,233,0.08)', marginBottom: '12px' }}>
+          <label style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E', display: 'block', marginBottom: '6px' }}>ปลายทาง</label>
+          <input className="trip-input" placeholder="เช่น คิวชู ญี่ปุ่น" value={destination} disabled={!isOwner}
+            onChange={e => { setDest(e.target.value); autoSaveDraft(e.target.value, dates, notes) }} style={{ marginBottom: '14px' }} />
+          <label style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E', display: 'block', marginBottom: '6px' }}>ช่วงเวลา</label>
+          <input className="trip-input" placeholder="เช่น 1-7 เมษายน 2568 (7 วัน)" value={dates} disabled={!isOwner}
+            onChange={e => { setDates(e.target.value); autoSaveDraft(destination, e.target.value, notes) }} style={{ marginBottom: '14px' }} />
+          <label style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E', display: 'block', marginBottom: '6px' }}>Note / ไอเดียทั้งหมด</label>
+          <div style={{ fontSize: '12px', color: '#BAE6FD', marginBottom: '8px' }}>พิมพ์ทุกอย่างที่รู้ ไม่ต้องเป็นระเบียบ</div>
+          <textarea className="trip-textarea" value={notes} disabled={!isOwner}
+            placeholder={'ตัวอย่าง:\n- อยากไป Yufuin\n- ต้องลอง ramen ที่ Fukuoka'}
             onChange={e => { setNotes(e.target.value); autoSaveDraft(destination, dates, e.target.value) }} />
         </div>
 
-        {error && <div style={S.error}>⚠️ {error}</div>}
+        {error && <div style={{ background: 'rgba(254,226,226,0.9)', border: '1px solid #fca5a5', color: '#b91c1c', padding: '10px 14px', borderRadius: '10px', fontSize: '13px', marginBottom: '10px' }}>⚠️ {error}</div>}
 
-        <button
-          style={{ ...S.btn, opacity: (destination && dates && notes) ? 1 : 0.5, marginTop: '4px' }}
-          disabled={!destination || !dates || !notes}
-          onClick={generate}
-        >
-          ✨ ให้ AI จัด Plan ให้
-        </button>
-        <div style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center', marginTop: '8px' }}>
-          {provider === 'gemini' ? '🔵 ใช้ Gemini Flash (ฟรี)' : `${prov.logo} ใช้ ${prov.name} API ของคุณ`}
-        </div>
+        {isOwner && (
+          <>
+            <button className="btn-primary" style={{ width: '100%', opacity: (destination && dates && notes) ? 1 : 0.5 }}
+              disabled={!destination || !dates || !notes} onClick={handleGenerate}>
+              ✨ ให้ AI จัด Plan ให้
+            </button>
+            <div style={{ fontSize: '12px', color: '#38BDF8', textAlign: 'center', marginTop: '8px' }}>
+              {provider === 'gemini' ? '🔵 ใช้ Gemini Flash (ฟรี)' : `${prov.logo} ใช้ ${prov.name} API ของคุณ`}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
 
-  /* ── PLAN ── */
+  /* ─── PLAN ─── */
   if (step === 'plan' && plan) {
     const day = plan.days[activeDay]
     const col = COLORS[activeDay % COLORS.length]
@@ -336,56 +618,87 @@ export default function TripPage() {
     const done = Object.values(checked).filter(Boolean).length
 
     return (
-      <div style={S.app}>
+      <div style={{ fontFamily: "'Plus Jakarta Sans',sans-serif", minHeight: '100vh', background: 'linear-gradient(135deg,#F0F9FF,#E0F2FE)' }}>
+        <style>{globalStyle}</style>
         {showSettings && <SettingsModal />}
+        {confirmGenerate && <ConfirmModal />}
+        {suggestingKey !== null && (() => {
+          const [di, ei] = suggestingKey.split('-').map(Number)
+          return <SuggestionSheet dayIdx={di} evIdx={ei} />
+        })()}
+        {showProposals && <ProposalsSheet />}
+        {showPacking && packingList && <PackingSheet />}
+        {showProposalForm && <ProposalFormSheet />}
 
-        {/* Edit notification */}
+        {/* Notifications */}
         {editNotif && (
-          <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: '#1e293b', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}>
+          <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(12,74,110,0.9)', backdropFilter: 'blur(8px)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(14,165,233,0.3)', border: '1px solid rgba(255,255,255,0.2)' }}>
             {editNotif}
           </div>
         )}
-
-        {/* Share toast */}
         {shareToast && (
-          <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: '#16a34a', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000 }}>
+          <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg,#10B981,#34D399)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(16,185,129,0.35)' }}>
             ✅ คัดลอก link แล้ว!
           </div>
         )}
 
+        {/* Guest Banner */}
+        {!isOwner && (
+          <div style={{ background: 'linear-gradient(135deg,#F97316,#FB923C)', color: 'white', padding: '10px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>
+            {isGuest ? '👁️ คุณกำลังดูในฐานะ Guest · ' : '👥 คุณเป็น Viewer · '}
+            <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => router.push(`/login?next=/trip/${id}`)}>
+              {isGuest ? 'สมัครสมาชิกเพื่อแก้ไขร่วมกัน →' : 'Login เพื่อแก้ไข →'}
+            </span>
+          </div>
+        )}
+
         {/* Header */}
-        <div style={{ background: 'linear-gradient(135deg,#1e293b,#334155)', color: 'white', padding: '16px', position: 'relative' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', color: 'white', padding: '16px', position: 'relative' }}>
+          <div style={{ position: 'absolute', top: 0, right: 0, width: '200px', height: '100%', background: 'radial-gradient(at top right, rgba(56,189,248,0.3), transparent)', pointerEvents: 'none' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative' }}>
             <button onClick={() => router.push('/trips')}
-              style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '13px' }}>
+              style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit', backdropFilter: 'blur(4px)' }}>
               ← Trips
             </button>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button onClick={copyShareLink}
-                style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '13px' }}>
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
                 🔗 แชร์
               </button>
-              <button onClick={() => { setTempProvider(provider); setTempKey(apiKey); setShowSettings(true) }}
-                style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '8px', padding: '5px 9px', cursor: 'pointer', fontSize: '15px' }}>
-                ⚙️
-              </button>
+              {isOwner && (
+                <>
+                  <button onClick={() => { loadProposals(trip.id); setShowProposals(true) }}
+                    style={{ position: 'relative', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                    🔔
+                    {proposals.filter(p => p.status === 'pending').length > 0 && (
+                      <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#F97316', borderRadius: '99px', width: '16px', height: '16px', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {proposals.filter(p => p.status === 'pending').length}
+                      </span>
+                    )}
+                  </button>
+                  <button onClick={() => { setTempProvider(provider); setTempKey(apiKey); setShowSettings(true) }}
+                    style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '15px', fontFamily: 'inherit' }}>
+                    ⚙️
+                  </button>
+                </>
+              )}
             </div>
           </div>
-          <div style={{ textAlign: 'center', marginTop: '10px' }}>
-            <div style={{ fontSize: '19px', fontWeight: '700' }}>{plan.tripTitle}</div>
-            <div style={{ fontSize: '12px', opacity: 0.65, marginTop: '4px' }}>{done}/{total} กิจกรรม</div>
+          <div style={{ textAlign: 'center', marginTop: '12px', position: 'relative' }}>
+            <div style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.3px' }}>{plan.tripTitle}</div>
+            <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}>{done}/{total} กิจกรรม</div>
             <div style={{ margin: '10px auto 0', maxWidth: '200px', height: '5px', background: 'rgba(255,255,255,0.2)', borderRadius: '99px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: '#4ade80', width: (done / total * 100) + '%', transition: 'width .4s', borderRadius: '99px' }} />
+              <div style={{ height: '100%', background: '#38BDF8', width: (done / total * 100) + '%', transition: 'width .4s', borderRadius: '99px' }} />
             </div>
           </div>
         </div>
 
-        {/* Day Tabs */}
-        <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', overflowX: 'auto', background: 'white', borderBottom: '1px solid #e2e8f0' }}>
+        {/* Day tabs */}
+        <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', overflowX: 'auto', background: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(14,165,233,0.1)' }}>
           {plan.days.map((d, i) => (
-            <button key={i} onClick={() => setActiveDay(i)}
-              style={{ flexShrink: 0, padding: '7px 13px', borderRadius: '12px', border: '2px solid ' + (i === activeDay ? COLORS[i % 7] : 'transparent'), background: i === activeDay ? COLORS[i % 7] : '#f8fafc', color: i === activeDay ? 'white' : '#64748b', cursor: 'pointer', textAlign: 'center', fontSize: '11px', fontWeight: '600', transition: 'all .2s' }}>
-              <div style={{ fontSize: '17px' }}>{d.emoji || '📍'}</div>
+            <button key={i} className="day-tab" onClick={() => setActiveDay(i)}
+              style={{ background: i === activeDay ? COLORS[i % 7] : 'rgba(255,255,255,0.6)', color: i === activeDay ? 'white' : '#0C4A6E', borderColor: i === activeDay ? COLORS[i % 7] : 'rgba(14,165,233,0.1)' }}>
+              <div style={{ fontSize: '18px' }}>{d.emoji || '📍'}</div>
               <div>วัน {d.day}</div>
               <div style={{ fontSize: '10px', opacity: .8 }}>{d.date}</div>
             </button>
@@ -394,41 +707,62 @@ export default function TripPage() {
 
         {/* Timeline */}
         <div style={{ maxWidth: '600px', margin: '0 auto', padding: '12px' }}>
-          <div style={{ borderRadius: '16px', overflow: 'hidden', border: '2px solid ' + col, background: light }}>
-            <div style={{ background: col, padding: '14px 16px', color: 'white' }}>
-              <div style={{ fontSize: '17px', fontWeight: '700' }}>{day.emoji || '📍'} {day.title}</div>
-              {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '3px' }}>🏨 {day.hotel}</div>}
+          <div style={{ borderRadius: '20px', overflow: 'hidden', border: `2px solid ${col}`, background: light, boxShadow: `0 4px 20px ${col}22` }}>
+            <div style={{ background: `linear-gradient(135deg,${col},${col}CC)`, padding: '16px', color: 'white' }}>
+              <div style={{ fontSize: '18px', fontWeight: '800' }}>{day.emoji || '📍'} {day.title}</div>
+              {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
             </div>
-            <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '7px' }}>
+            <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {day.events.map((ev, ei) => {
                 const key = activeDay + '-' + ei
                 const isDone = checked[key]
-                const noteOpen = showNote[key]
+                const isEditing = editingKey === key
                 return (
-                  <div key={ei} style={{ background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', opacity: isDone ? .5 : 1 }}>
-                    <div onClick={() => toggleCheck(key)}
-                      style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '11px', cursor: 'pointer' }}>
-                      <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'monospace', width: '34px', flexShrink: 0, paddingTop: '3px' }}>{ev.time}</div>
-                      <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: isDone ? '#dcfce7' : '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px', flexShrink: 0 }}>
-                        {isDone ? '✅' : ev.icon}
+                  <div key={ei} className="event-card" style={{ opacity: isDone ? .55 : 1 }}>
+                    {isEditing && isOwner ? (
+                      <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <input className="trip-input" value={editTime} onChange={e => setEditTime(e.target.value)} placeholder="เวลา" style={{ width: '80px', padding: '7px 10px', fontSize: '12px' }} />
+                          <input className="trip-input" value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="ชื่อ activity" style={{ flex: 1, padding: '7px 10px', fontSize: '13px' }} />
+                        </div>
+                        <input className="trip-input" value={editDetail} onChange={e => setEditDetail(e.target.value)} placeholder="รายละเอียด (optional)" style={{ padding: '7px 10px', fontSize: '12px' }} />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn-ghost" style={{ flex: 1, padding: '7px' }} onClick={() => setEditingKey(null)}>ยกเลิก</button>
+                          <button className="btn-primary" style={{ flex: 2, padding: '7px', fontSize: '13px' }} onClick={() => saveInlineEdit(activeDay, ei)}>บันทึก</button>
+                        </div>
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#1e293b', textDecoration: isDone ? 'line-through' : 'none' }}>{ev.title}</div>
-                        {ev.detail && <div style={{ fontSize: '12px', color: ev.warning ? '#d97706' : '#64748b', marginTop: '2px' }}>{ev.detail}</div>}
-                        <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: light, color: col, fontWeight: '600' }}>{ev.type}</span>
+                    ) : (
+                      <div onClick={() => toggleCheck(key)} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '11px', cursor: 'pointer' }}>
+                        <div style={{ fontSize: '11px', color: '#38BDF8', fontFamily: 'monospace', width: '36px', flexShrink: 0, paddingTop: '3px', fontWeight: '700' }}>{ev.time}</div>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: isDone ? '#d1fae5' : light, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0, transition: 'all 0.2s' }}>
+                          {isDone ? '✅' : ev.icon}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E', textDecoration: isDone ? 'line-through' : 'none' }}>{ev.title}</div>
+                          {ev.detail && <div style={{ fontSize: '12px', color: ev.warning ? '#d97706' : '#38BDF8', marginTop: '2px' }}>{ev.detail}</div>}
+                          <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: light, color: col, fontWeight: '700', border: `1px solid ${col}33` }}>{ev.type}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                          {isOwner && (
+                            <>
+                              <button className="icon-btn" title="AI Suggestion" onClick={() => { setSuggestions([]); fetchSuggestions(activeDay, ei) }}
+                                style={{ fontSize: '15px', opacity: 0.7 }}>✨</button>
+                              <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || '') }}
+                                style={{ fontSize: '15px', opacity: 0.7 }}>✏️</button>
+                            </>
+                          )}
+                          <button className="icon-btn" onClick={e => { e.stopPropagation(); setShowNote(p => ({ ...p, [key]: !showNote[key] })) }}
+                            style={{ fontSize: '15px', opacity: noteMap[key] ? 1 : 0.4 }} title="เพิ่ม note">📝</button>
+                        </div>
                       </div>
-                      <button onClick={e => { e.stopPropagation(); setShowNote(p => ({ ...p, [key]: !noteOpen })) }}
-                        style={{ background: 'none', border: 'none', fontSize: '16px', cursor: 'pointer', opacity: noteMap[key] ? 1 : 0.4, flexShrink: 0 }}
-                        title="เพิ่ม note">📝</button>
-                    </div>
-                    {noteOpen && (
-                      <div style={{ borderTop: '1px solid #f1f5f9', padding: '8px 12px 10px' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', marginBottom: '5px' }}>📝 Note</div>
+                    )}
+                    {showNote[key] && !isEditing && (
+                      <div style={{ borderTop: `1px solid ${light}`, padding: '8px 12px 10px' }}>
+                        <div style={{ fontSize: '11px', color: col, fontWeight: '700', marginBottom: '5px' }}>📝 Note</div>
                         <textarea
-                          style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: '8px', padding: '7px 10px', fontSize: '13px', resize: 'none', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', color: '#1e293b' }}
+                          style={{ width: '100%', border: `1.5px solid ${col}33`, borderRadius: '8px', padding: '7px 10px', fontSize: '13px', resize: 'none', fontFamily: 'inherit', outline: 'none', color: '#0C4A6E', background: 'rgba(255,255,255,0.7)' }}
                           rows={2} placeholder="เพิ่ม note ที่นี่..."
-                          value={noteMap[key] || ''}
-                          onClick={e => e.stopPropagation()}
+                          value={noteMap[key] || ''} onClick={e => e.stopPropagation()}
                           onChange={e => saveNote(key, e.target.value)} />
                       </div>
                     )}
@@ -439,14 +773,30 @@ export default function TripPage() {
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-            <button style={{ ...S.btnGhost, flex: 1 }} onClick={() => setStep('draft')}>← แก้ Notes</button>
-            <button style={{ ...S.btn, flex: 2 }} onClick={() => { setStep('draft'); setPlan(null); fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: null }) }) }}>
-              ✨ Generate ใหม่
-            </button>
-          </div>
-          <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center', marginTop: '10px' }}>
-            แตะกิจกรรมเพื่อติ๊ก ✅ · กด 📝 เพื่อเพิ่ม note · กด 🔗 เพื่อแชร์
+          {isOwner ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn-ghost" style={{ flex: 1 }} onClick={() => setStep('draft')}>← แก้ Notes</button>
+                <button className="btn-primary" style={{ flex: 2 }} onClick={handleGenerate}>✨ Generate ใหม่</button>
+              </div>
+              <button className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                onClick={generatePacking} disabled={packingLoading}>
+                {packingLoading ? 'AI กำลังสร้าง list...' : '🧳 สร้าง Packing List'}
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
+              <button className="btn-ghost" style={{ width: '100%' }} onClick={() => setStep('draft')}>← ดู Notes</button>
+              {!isGuest && (
+                <button className="btn-primary" style={{ width: '100%' }}
+                  onClick={() => { setProposalLocalPlan(JSON.parse(JSON.stringify(plan))); setShowProposalForm(true) }}>
+                  📤 เสนอแก้ไข Plan นี้
+                </button>
+              )}
+            </div>
+          )}
+          <div style={{ fontSize: '11px', color: '#38BDF8', textAlign: 'center', marginTop: '10px' }}>
+            {isOwner ? 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อแก้ไข · กด ✨ เพื่อให้ AI Suggest · กด 🔗 เพื่อแชร์' : 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด 📝 เพื่อเพิ่ม note'}
           </div>
         </div>
       </div>
