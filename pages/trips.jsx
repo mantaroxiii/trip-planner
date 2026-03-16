@@ -105,10 +105,13 @@ export default function Trips() {
             <div style={{ fontSize: '14px' }}>กด "+ สร้าง Trip ใหม่" เพื่อเริ่มต้นวางแผน</div>
           </div>
         ) : trips.map(trip => (
-          <div key={trip.id} style={S.card} onClick={() => router.push(`/trip/${trip.id}`)}>
+          <div key={trip.id} style={{ ...S.card, borderLeft: trip._shared ? '3px solid #8B5CF6' : 'none' }} onClick={() => router.push(`/trip/${trip.id}`)}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b', marginBottom: '3px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {trip.plan_json ? '🗓️' : '📝'} {trip.title}
+                {trip._shared && (
+                  <span style={{ fontSize: '10px', background: '#EDE9FE', color: '#7C3AED', padding: '1px 8px', borderRadius: '99px', fontWeight: '700' }}>👥 ร่วมทริป</span>
+                )}
               </div>
               {trip.destination && (
                 <div style={{ fontSize: '13px', color: '#64748b' }}>📍 {trip.destination}</div>
@@ -120,13 +123,15 @@ export default function Trips() {
                 แก้ไขล่าสุด {formatDate(trip.updated_at)}
               </div>
             </div>
-            <button
-              style={S.deleteBtn}
-              onClick={e => { e.stopPropagation(); deleteTrip(trip.id) }}
-              title="ลบ trip"
-            >
-              🗑️
-            </button>
+            {!trip._shared && (
+              <button
+                style={S.deleteBtn}
+                onClick={e => { e.stopPropagation(); deleteTrip(trip.id) }}
+                title="ลบ trip"
+              >
+                🗑️
+              </button>
+            )}
           </div>
         ))}
       </div>

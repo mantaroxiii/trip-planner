@@ -2,8 +2,6 @@ import { getAuthUser, createAdminClient } from '../../../lib/supabaseServer'
 
 export default async function handler(req, res) {
   const user = await getAuthUser(req)
-  if (!user) return res.status(401).json({ error: 'Unauthorized' })
-
   const { id } = req.query
   const admin = createAdminClient()
 
@@ -15,15 +13,45 @@ export default async function handler(req, res) {
 
   if (fetchError || !trip) return res.status(404).json({ error: 'Not found' })
 
-  const isOwner = trip.owner_id === user.id
-  if (!isOwner) {
-    // เพื่อนดูได้ถ้า trip มี share_code และเป็น GET เท่านั้น
-    if (!trip.share_code) return res.status(403).json({ error: 'Forbidden' })
-    if (req.method !== 'GET') return res.status(403).json({ error: 'Forbidden' })
+  // Determine access level
+  const isOwner = user && trip.owner_id === user.id
+  let isMember = false
+
+  if (user && !isOwner) {
+    // Check if already a member
+    const { data: membership } = await admin
+      .from('trip_members')
+      .select('id')
+      .eq('trip_id', id)
+      .eq('user_id', user.id)
+      .single()
+    isMember = !!membership
   }
 
   if (req.method === 'GET') {
-    return res.json({ trip })
+    // Anyone can view a trip via share link (GET)
+    // If logged in user is not owner and not yet a member → auto-join
+    if (user && !isOwner && !isMember && !user.is_anonymous) {
+      await admin.from('trip_members').insert({
+        trip_id: id,
+        user_id: user.id,
+        role: 'member',
+      }).select().single()
+      isMember = true
+    }
+
+    return res.json({
+      trip,
+      role: isOwner ? 'owner' : isMember ? 'member' : 'viewer',
+    })
+  }
+
+  // For write operations, require auth
+  if (!user) return res.status(401).json({ error: 'Unauthorized' })
+
+  // Only owner can PATCH/DELETE
+  if (!isOwner) {
+    return res.status(403).json({ error: 'Only the trip owner can modify this trip' })
   }
 
   if (req.method === 'PATCH') {

@@ -2,8 +2,33 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabase'
 
-const COLORS = ['#0EA5E9', '#8B5CF6', '#F97316', '#10B981', '#EC4899', '#F59E0B', '#6366F1']
+const COLORS = ['#0EA5E9', '#EC4899', '#8B5CF6', '#F59E0B', '#10B981', '#F43F5E', '#6366F1']
 const LIGHT = ['#E0F2FE', '#EDE9FE', '#FFF7ED', '#D1FAE5', '#FCE7F3', '#FEF3C7', '#EEF2FF']
+
+// Shared helper: parse trip date strings (Thai, English, ISO)
+const parseTripDate = (dateStr) => {
+  if (!dateStr) return null
+  const now = new Date()
+  const thaiMonths = { 'ม.ค.': 0, 'ก.พ.': 1, 'มี.ค.': 2, 'เม.ย.': 3, 'พ.ค.': 4, 'มิ.ย.': 5, 'ก.ค.': 6, 'ส.ค.': 7, 'ก.ย.': 8, 'ต.ค.': 9, 'พ.ย.': 10, 'ธ.ค.': 11 }
+  const enMonths = { 'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5, 'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11 }
+  const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return new Date(iso[1], iso[2] - 1, iso[3])
+  for (const [th, mm] of Object.entries(thaiMonths)) {
+    if (dateStr.includes(th)) { const d = dateStr.match(/(\d{1,2})/); if (d) return new Date(now.getFullYear(), mm, parseInt(d[1])) }
+  }
+  for (const [en, mm] of Object.entries(enMonths)) {
+    if (dateStr.toLowerCase().includes(en)) { const d = dateStr.match(/(\d{1,2})/); if (d) return new Date(now.getFullYear(), mm, parseInt(d[1])) }
+  }
+  return null
+}
+
+// Shared helper: find weather for a specific day
+const getWeatherForDay = (weatherData, dayDate) => {
+  if (!weatherData?.weather || !dayDate) return null
+  const d = parseTripDate(dayDate)
+  if (!d) return null
+  return weatherData.weather.find(w => w.date === d.toISOString().split('T')[0])
+}
 
 const PROVIDERS = [
   { id: 'gemini', name: 'Gemini 2.5 Flash', logo: '🔵', free: true, model: 'gemini-2.5-flash' },
@@ -22,6 +47,8 @@ export default function TripPage() {
   const [plansByLang, setPlansByLang] = useState({})
   const [isOwner, setIsOwner] = useState(false)
   const [isGuest, setIsGuest] = useState(false)
+  const [isMember, setIsMember] = useState(false)
+  const [tripRole, setTripRole] = useState('viewer')
 
   // Draft fields
   const [destination, setDest] = useState('')
@@ -89,28 +116,34 @@ export default function TripPage() {
   const saveTimer = useRef(null)
   const prov = PROVIDERS.find(p => p.id === provider) || PROVIDERS[0]
 
-  // 1. Auth check
+  // 1. Auth check — allow anonymous viewing
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (!s) { router.replace(`/login?next=/trip/${router.query.id || ''}`); return }
-      setSession(s)
-      setIsGuest(s.user.is_anonymous === true)
-      const p = localStorage.getItem('trip_provider') || 'gemini'
-      const k = localStorage.getItem('trip_api_key') || ''
-      setProvider(p); setTempProvider(p); setApiKey(k); setTempKey(k)
+      if (s) {
+        setSession(s)
+        setIsGuest(s.user.is_anonymous === true)
+        const p = localStorage.getItem('trip_provider') || 'gemini'
+        const k = localStorage.getItem('trip_api_key') || ''
+        setProvider(p); setTempProvider(p); setApiKey(k); setTempKey(k)
+      }
+      // Even without session, we continue (for anonymous viewing)
+      setStep(prev => prev === 'loading' ? 'loading' : prev)
     })
   }, [])
 
   // 2. Load trip
   useEffect(() => {
-    if (!session || !id) return
+    if (!id) return
+    // Load trip even without session (anonymous view)
     loadTrip()
-    const savedChecked = localStorage.getItem(`checked-${id}`)
-    const savedNotes = localStorage.getItem(`notes-${id}`)
-    const savedImages = localStorage.getItem(`noteImages-${id}`)
-    if (savedChecked) setChecked(JSON.parse(savedChecked))
-    if (savedNotes) setNoteMap(JSON.parse(savedNotes))
-    if (savedImages) setNoteImages(JSON.parse(savedImages))
+    if (id) {
+      const savedChecked = localStorage.getItem(`checked-${id}`)
+      const savedNotes = localStorage.getItem(`notes-${id}`)
+      const savedImages = localStorage.getItem(`noteImages-${id}`)
+      if (savedChecked) setChecked(JSON.parse(savedChecked))
+      if (savedNotes) setNoteMap(JSON.parse(savedNotes))
+      if (savedImages) setNoteImages(JSON.parse(savedImages))
+    }
   }, [session, id])
 
   // 3. Realtime
@@ -132,14 +165,16 @@ export default function TripPage() {
   }, [trip?.id])
 
   const loadTrip = async () => {
-    const res = await fetch(`/api/trips/${id}`, {
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    })
+    const headers = {}
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+    const res = await fetch(`/api/trips/${id}`, { headers })
     if (!res.ok) { router.replace('/trips'); return }
-    const { trip: t } = await res.json()
+    const { trip: t, role } = await res.json()
     setTrip(t)
-    const owner = t.owner_id === session.user.id
+    setTripRole(role || 'viewer')
+    const owner = role === 'owner'
     setIsOwner(owner)
+    setIsMember(role === 'member')
     setDest(t.destination || '')
     setDates(t.dates || '')
     setNotes(t.notes || '')
@@ -152,7 +187,7 @@ export default function TripPage() {
       }
     }
     else { setStep('draft') }
-    if (owner) loadProposals(t.id)
+    if (owner && session) loadProposals(t.id)
   }
 
   const loadProposals = async (tripId) => {
@@ -663,26 +698,8 @@ export default function TripPage() {
 
   /* ─── TIMELINE PREVIEW ─── */
   const TimelinePreview = () => {
-    const [weatherData, setWeatherData] = useState(null)
-    const [weatherLoading, setWeatherLoading] = useState(true)
-
     const now = new Date()
     const currentMinutes = now.getHours() * 60 + now.getMinutes()
-
-    const parseTripDate = (dateStr) => {
-      if (!dateStr) return null
-      const thaiMonths = { 'ม.ค.': 0, 'ก.พ.': 1, 'มี.ค.': 2, 'เม.ย.': 3, 'พ.ค.': 4, 'มิ.ย.': 5, 'ก.ค.': 6, 'ส.ค.': 7, 'ก.ย.': 8, 'ต.ค.': 9, 'พ.ย.': 10, 'ธ.ค.': 11 }
-      const enMonths = { 'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5, 'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11 }
-      const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/)
-      if (iso) return new Date(iso[1], iso[2] - 1, iso[3])
-      for (const [th, mm] of Object.entries(thaiMonths)) {
-        if (dateStr.includes(th)) { const d = dateStr.match(/(\d{1,2})/); if (d) return new Date(now.getFullYear(), mm, parseInt(d[1])) }
-      }
-      for (const [en, mm] of Object.entries(enMonths)) {
-        if (dateStr.toLowerCase().includes(en)) { const d = dateStr.match(/(\d{1,2})/); if (d) return new Date(now.getFullYear(), mm, parseInt(d[1])) }
-      }
-      return null
-    }
 
     const tripDates = plan?.days?.map(d => parseTripDate(d.date)) || []
     const tripStartDate = tripDates.find(d => d) || null
@@ -701,20 +718,6 @@ export default function TripPage() {
 
     const parseTime = (t) => { if (!t) return null; const m = t.match(/(\d{1,2}):(\d{2})/); return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : null }
 
-    useEffect(() => {
-      if (!destination) { setWeatherLoading(false); return }
-      fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination }) })
-        .then(r => r.json()).then(d => { setWeatherData(d); setWeatherLoading(false) })
-        .catch(() => setWeatherLoading(false))
-    }, [])
-
-    const getWeather = (dayDate) => {
-      if (!weatherData?.weather || !dayDate) return null
-      const d = parseTripDate(dayDate)
-      if (!d) return null
-      return weatherData.weather.find(w => w.date === d.toISOString().split('T')[0])
-    }
-
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg,#0C4A6E,#0369A1,#0EA5E9)', zIndex: 1000, overflowY: 'auto', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
         ref={el => { if (el) { const m = el.querySelector('[data-current="true"]'); if (m) setTimeout(() => m.scrollIntoView({ behavior: 'smooth', block: 'center' }), 400) } }}>
@@ -723,7 +726,7 @@ export default function TripPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>🗺️ Timeline</div>
-              <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.7)', marginTop: '2px' }}>{plan?.tripTitle} · {plan?.days?.length} วัน{weatherData?.city ? ` · 📍 ${weatherData.city}` : ''}</div>
+              <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.7)', marginTop: '2px' }}>{plan?.tripTitle} · {plan?.days?.length} วัน{planWeather?.city ? ` · 📍 ${planWeather.city}` : ''}</div>
             </div>
             <button onClick={() => setShowTimeline(false)} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>✕</button>
           </div>
@@ -750,7 +753,7 @@ export default function TripPage() {
             const col = COLORS[di % COLORS.length]
             const isCurrentDay = di === currentDayIdx
             const isDoneDay = currentDayIdx >= 0 ? di < currentDayIdx : (tripDates[di] && now > new Date(tripDates[di].getTime() + 86400000))
-            const w = getWeather(day.date)
+            const w = getWeatherForDay(planWeather, day.date)
             return (
               <div key={di} style={{ marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
@@ -770,7 +773,7 @@ export default function TripPage() {
                       {w.rainChance > 20 && <div style={{ fontSize: '9px', color: '#38BDF8' }}>💧{w.rainChance}%</div>}
                     </div>
                   )}
-                  {weatherLoading && <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.4)' }}>⏳</div>}
+                  {!planWeather && <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.4)' }}>⏳</div>}
                 </div>
                 <div style={{ paddingLeft: '22px', borderLeft: `3px solid ${col}44`, marginLeft: '20px' }}>
                   {day.events.map((ev, ei) => {
@@ -1046,13 +1049,15 @@ export default function TripPage() {
                   <div style={{ fontSize: '18px', fontWeight: '800' }}>{day.emoji || '📍'} {day.title}</div>
                   {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
                 </div>
-                {planWeather?.weather?.[activeDay] && (
-                  <div style={{ background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '6px 10px', textAlign: 'center', minWidth: '70px' }}>
-                    <div style={{ fontSize: '20px' }}>{planWeather.weather[activeDay].icon}</div>
-                    <div style={{ fontSize: '11px', fontWeight: '700' }}>{planWeather.weather[activeDay].tempMax}°</div>
-                    <div style={{ fontSize: '9px', opacity: 0.8 }}>💧{planWeather.weather[activeDay].rainChance}%</div>
-                  </div>
-                )}
+                {(() => {
+                  const w = getWeatherForDay(planWeather, day.date); return w ? (
+                    <div style={{ background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '6px 10px', textAlign: 'center', minWidth: '70px' }}>
+                      <div style={{ fontSize: '20px' }}>{w.icon}</div>
+                      <div style={{ fontSize: '11px', fontWeight: '700' }}>{w.tempMax}°/{w.tempMin}°</div>
+                      <div style={{ fontSize: '9px', opacity: 0.8 }}>💧{w.rainChance}%</div>
+                    </div>
+                  ) : null
+                })()}
               </div>
             </div>
             <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
