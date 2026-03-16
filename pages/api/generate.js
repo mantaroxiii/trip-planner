@@ -50,7 +50,7 @@ Rules:
 - Include meal suggestions if not in the notes
 - Group activities geographically each day
 - A typical day should have 5–8 events
-- IMPORTANT: Include real, accurate GPS coordinates (lat/lng) for EVERY event. Use the actual latitude and longitude of the location. This is critical for map view.`
+- CRITICAL: You MUST include accurate, real-world GPS coordinates (lat, lng as decimal numbers) for EVERY event. Look up the actual coordinates of each specific location/restaurant/attraction. For example, Tokyo Tower is lat: 35.6586, lng: 139.7454. Do NOT guess or approximate — use the real coordinates of the actual place.`
 
 async function callClaude(apiKey, destination, dates, notes, lang) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
