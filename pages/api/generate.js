@@ -90,7 +90,7 @@ async function callGemini(apiKey, destination, dates, notes) {
   const key = apiKey || process.env.GEMINI_API_KEY
   if (!key) throw new Error('Gemini API key not configured. กรุณาติดต่อผู้ดูแลระบบ')
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
