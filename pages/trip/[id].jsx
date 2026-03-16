@@ -1541,16 +1541,6 @@ export default function TripPage() {
                 </div>
                 <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
               </div>
-              {/* Spending Report */}
-              <div onClick={() => router.push(`/trip/spending?id=${id}`)}
-                style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(14,165,233,0.3)', transition: 'transform 0.2s' }}>
-                <div style={{ fontSize: '28px' }}>📊</div>
-                <div>
-                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Spending Report</div>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสรุปค่าใช้จ่าย · กราฟ · Activity Log</div>
-                </div>
-                <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
-              </div>
               <button className="btn-ghost" style={{ fontSize: '13px' }}
                 onClick={generateGaps} disabled={gapsLoading}>
                 {gapsLoading ? '⏳ กำลังวิเคราะห์...' : '🔍 เติม Slot ว่าง (AI)'}
@@ -1565,6 +1555,19 @@ export default function TripPage() {
                   📤 เสนอแก้ไข Plan นี้
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Spending Report - visible to owner + members */}
+          {!isGuest && (
+            <div onClick={() => router.push(`/trip/spending?id=${id}`)}
+              style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(14,165,233,0.3)', transition: 'transform 0.2s', marginTop: '10px' }}>
+              <div style={{ fontSize: '28px' }}>📊</div>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Spending Report</div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสรุปค่าใช้จ่าย · กราฟ · Activity Log</div>
+              </div>
+              <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
             </div>
           )}
           <div style={{ fontSize: '11px', color: '#38BDF8', textAlign: 'center', marginTop: '10px' }}>
