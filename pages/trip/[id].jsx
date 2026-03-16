@@ -18,6 +18,7 @@ export default function TripPage() {
   const [session, setSession] = useState(null)
   const [trip, setTrip] = useState(null)
   const [step, setStep] = useState('loading')
+  const [lang, setLang] = useState('th')
   const [isOwner, setIsOwner] = useState(false)
   const [isGuest, setIsGuest] = useState(false)
 
@@ -68,6 +69,7 @@ export default function TripPage() {
   const [noteImages, setNoteImages] = useState({})
   const [pendingImages, setPendingImages] = useState({})
   const [previewImage, setPreviewImage] = useState(null)
+  const [planWeather, setPlanWeather] = useState(null)
 
   // UI state
   const [error, setError] = useState('')
@@ -140,7 +142,13 @@ export default function TripPage() {
     setDest(t.destination || '')
     setDates(t.dates || '')
     setNotes(t.notes || '')
-    if (t.plan_json) { setPlan(t.plan_json); setStep('plan') }
+    if (t.plan_json) {
+      setPlan(t.plan_json); setStep('plan'); setShowTimeline(true)
+      if (t.destination) {
+        fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination: t.destination }) })
+          .then(r => r.json()).then(d => setPlanWeather(d)).catch(() => { })
+      }
+    }
     else { setStep('draft') }
     if (owner) loadProposals(t.id)
   }
@@ -296,7 +304,7 @@ export default function TripPage() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: provider === 'gemini' ? null : apiKey, provider, destination, dates, notes }),
+        body: JSON.stringify({ apiKey: provider === 'gemini' ? null : apiKey, provider, destination, dates, notes, lang }),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
@@ -308,7 +316,12 @@ export default function TripPage() {
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan_json: data, title: data.tripTitle || destination }),
       })
-      setStep('plan')
+      setStep('plan'); setShowTimeline(true)
+      // Fetch weather for plan view
+      if (destination) {
+        fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination }) })
+          .then(r => r.json()).then(d => setPlanWeather(d)).catch(() => { })
+      }
     } catch (e) {
       setError(e.message); setStep('draft')
     }
@@ -958,6 +971,14 @@ export default function TripPage() {
                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
                 🗺️
               </button>
+              <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', overflow: 'hidden' }}>
+                {['th', 'en', 'jp'].map(l => (
+                  <button key={l} onClick={() => setLang(l)}
+                    style={{ background: lang === l ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: lang === l ? '800' : '500', fontFamily: 'inherit', borderRight: l !== 'jp' ? '1px solid rgba(255,255,255,0.15)' : 'none' }}>
+                    {l === 'th' ? '🇹🇭' : l === 'en' ? '🇬🇧' : '🇯🇵'}
+                  </button>
+                ))}
+              </div>
               <button onClick={copyShareLink}
                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
                 🔗 แชร์
@@ -1006,8 +1027,19 @@ export default function TripPage() {
         <div style={{ maxWidth: '600px', margin: '0 auto', padding: '12px' }}>
           <div style={{ borderRadius: '20px', overflow: 'hidden', border: `2px solid ${col}`, background: light, boxShadow: `0 4px 20px ${col}22` }}>
             <div style={{ background: `linear-gradient(135deg,${col},${col}CC)`, padding: '16px', color: 'white' }}>
-              <div style={{ fontSize: '18px', fontWeight: '800' }}>{day.emoji || '📍'} {day.title}</div>
-              {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: '18px', fontWeight: '800' }}>{day.emoji || '📍'} {day.title}</div>
+                  {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
+                </div>
+                {planWeather?.forecast?.[activeDay] && (
+                  <div style={{ background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '6px 10px', textAlign: 'center', minWidth: '70px' }}>
+                    <div style={{ fontSize: '20px' }}>{planWeather.forecast[activeDay].icon}</div>
+                    <div style={{ fontSize: '11px', fontWeight: '700' }}>{planWeather.forecast[activeDay].tempMax}°</div>
+                    <div style={{ fontSize: '9px', opacity: 0.8 }}>💧{planWeather.forecast[activeDay].rain}%</div>
+                  </div>
+                )}
+              </div>
             </div>
             <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {day.events.map((ev, ei) => {

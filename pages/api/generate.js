@@ -1,6 +1,12 @@
 import { getAuthUser } from '../../lib/supabaseServer'
 
-const PROMPT = (destination, dates, notes) => `You are an expert travel planner. Convert the user's rough notes into a detailed, realistic day-by-day itinerary.
+const LANG_INSTRUCTION = {
+  th: 'Write ALL titles, details, hotel names, and activity descriptions in Thai (ภาษาไทย). Keep place names in their original language but add Thai transliteration.',
+  en: 'Write ALL titles, details, hotel names, and activity descriptions in English.',
+  jp: 'Write ALL titles, details, hotel names, and activity descriptions in Japanese (日本語). Keep place names in their original language but add Japanese readings.',
+}
+
+const PROMPT = (destination, dates, notes, lang = 'th') => `You are an expert travel planner. Convert the user's rough notes into a detailed, realistic day-by-day itinerary.
 
 Trip Details:
 - Destination: ${destination}
@@ -35,6 +41,7 @@ Return ONLY a valid JSON object — no markdown, no code blocks, no explanation.
 }
 
 Rules:
+- ${LANG_INSTRUCTION[lang] || LANG_INSTRUCTION.th}
 - type must be one of: transport, drive, sight, food, hotel, shopping
 - Add realistic travel times between locations
 - Set warning: true for anything needing advance booking
@@ -42,7 +49,7 @@ Rules:
 - Group activities geographically each day
 - A typical day should have 5–8 events`
 
-async function callClaude(apiKey, destination, dates, notes) {
+async function callClaude(apiKey, destination, dates, notes, lang) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -53,7 +60,7 @@ async function callClaude(apiKey, destination, dates, notes) {
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      messages: [{ role: 'user', content: PROMPT(destination, dates, notes) }],
+      messages: [{ role: 'user', content: PROMPT(destination, dates, notes, lang) }],
     }),
   })
   if (!res.ok) {
@@ -64,7 +71,7 @@ async function callClaude(apiKey, destination, dates, notes) {
   return data.content[0].text.trim()
 }
 
-async function callOpenAI(apiKey, destination, dates, notes) {
+async function callOpenAI(apiKey, destination, dates, notes, lang) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -73,7 +80,7 @@ async function callOpenAI(apiKey, destination, dates, notes) {
     },
     body: JSON.stringify({
       model: 'gpt-4o',
-      messages: [{ role: 'user', content: PROMPT(destination, dates, notes) }],
+      messages: [{ role: 'user', content: PROMPT(destination, dates, notes, lang) }],
       max_tokens: 4096,
       response_format: { type: 'json_object' },
     }),
@@ -86,7 +93,7 @@ async function callOpenAI(apiKey, destination, dates, notes) {
   return data.choices[0].message.content.trim()
 }
 
-async function callGemini(apiKey, destination, dates, notes) {
+async function callGemini(apiKey, destination, dates, notes, lang) {
   const key = apiKey || process.env.GEMINI_API_KEY
   if (!key) throw new Error('Gemini API key not configured. กรุณาติดต่อผู้ดูแลระบบ')
 
@@ -95,7 +102,7 @@ async function callGemini(apiKey, destination, dates, notes) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: PROMPT(destination, dates, notes) }] }],
+      contents: [{ parts: [{ text: PROMPT(destination, dates, notes, lang) }] }],
       generationConfig: { responseMimeType: 'application/json' },
     }),
   })
@@ -113,7 +120,7 @@ export default async function handler(req, res) {
   const user = await getAuthUser(req)
   if (!user) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบก่อน' })
 
-  const { apiKey, provider = 'gemini', destination, dates, notes } = req.body
+  const { apiKey, provider = 'gemini', destination, dates, notes, lang = 'th' } = req.body
 
   if (!destination || !notes) {
     return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบ' })
@@ -127,11 +134,11 @@ export default async function handler(req, res) {
     let raw
 
     if (provider === 'openai') {
-      raw = await callOpenAI(apiKey, destination, dates, notes)
+      raw = await callOpenAI(apiKey, destination, dates, notes, lang)
     } else if (provider === 'gemini') {
-      raw = await callGemini(apiKey, destination, dates, notes)
+      raw = await callGemini(apiKey, destination, dates, notes, lang)
     } else {
-      raw = await callClaude(apiKey, destination, dates, notes)
+      raw = await callClaude(apiKey, destination, dates, notes, lang)
     }
 
     const cleaned = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
