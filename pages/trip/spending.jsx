@@ -124,6 +124,36 @@ export default function SpendingReport() {
     const totalAmount = filteredEntries.reduce((s, e) => s + e.amount, 0)
     const mainCurrency = Object.entries(byCurrency).sort((a, b) => b[1] - a[1])?.[0]?.[0] || 'THB'
 
+    // Split bill settlement
+    const settlements = useMemo(() => {
+        if (persons.length <= 1) return []
+        const fairShare = totalAmount / persons.length
+        const balances = persons.map(p => ({
+            name: p.name?.split(' ')[0] || '?',
+            email: p.email,
+            paid: allEntries.filter(e => (e.userEmail || e.userName) === p.id).reduce((s, e) => s + e.amount, 0),
+            balance: 0
+        }))
+        balances.forEach(b => { b.balance = b.paid - fairShare })
+
+        // Greedy settlement: minimize transactions
+        const debtors = balances.filter(b => b.balance < -0.5).map(b => ({ ...b })).sort((a, b) => a.balance - b.balance)
+        const creditors = balances.filter(b => b.balance > 0.5).map(b => ({ ...b })).sort((a, b) => b.balance - a.balance)
+        const transfers = []
+        let i = 0, j = 0
+        while (i < debtors.length && j < creditors.length) {
+            const amount = Math.min(-debtors[i].balance, creditors[j].balance)
+            if (amount > 0.5) {
+                transfers.push({ from: debtors[i].name, to: creditors[j].name, amount: Math.round(amount) })
+            }
+            debtors[i].balance += amount
+            creditors[j].balance -= amount
+            if (Math.abs(debtors[i].balance) < 0.5) i++
+            if (Math.abs(creditors[j].balance) < 0.5) j++
+        }
+        return { fairShare: Math.round(fairShare), balances, transfers }
+    }, [persons, allEntries, totalAmount])
+
     const togglePerson = (personId) => {
         setSelectedPersons(prev =>
             prev.includes(personId) ? prev.filter(p => p !== personId) : [...prev, personId]
@@ -208,6 +238,7 @@ export default function SpendingReport() {
                             { id: 'category', icon: '🏷️', label: 'ประเภท' },
                             { id: 'people', icon: '👥', label: 'รายคน' },
                             { id: 'daily', icon: '📅', label: 'รายวัน' },
+                            { id: 'split', icon: '🧾', label: 'Split' },
                             { id: 'log', icon: '📋', label: 'Log' },
                         ].map(t => (
                             <button key={t.id} className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
@@ -517,6 +548,78 @@ export default function SpendingReport() {
                                             </div>
                                         )
                                     })}
+                                </div>
+                            )}
+
+                            {/* Split Bill Tab */}
+                            {activeTab === 'split' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {persons.length <= 1 ? (
+                                        <div style={{ textAlign: 'center', padding: '40px 20px', color: 'rgba(255,255,255,0.3)' }}>
+                                            <div style={{ fontSize: '36px', marginBottom: '12px' }}>🧾</div>
+                                            ต้องมีอย่างน้อย 2 คนถึงจะหารบิลได้
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* Fair Share Card */}
+                                            <div className="glass-card" style={{ padding: '16px', textAlign: 'center', animation: 'fadeInUp 0.5s forwards', opacity: 0 }}>
+                                                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', fontWeight: '600' }}>💰 ค่าใช้จ่ายรวม ÷ {persons.length} คน</div>
+                                                <div style={{ fontSize: '32px', fontWeight: '800', color: '#38BDF8', marginTop: '6px' }}>
+                                                    {CURRENCY_SYMBOLS[mainCurrency] || ''}{settlements.fairShare?.toLocaleString()}
+                                                </div>
+                                                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>ต่อคน ({mainCurrency})</div>
+                                            </div>
+
+                                            {/* Person Balances */}
+                                            <div style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginTop: '4px' }}>📊 สรุปแต่ละคน</div>
+                                            {settlements.balances?.map((b, i) => {
+                                                const isPositive = b.balance > 0.5
+                                                const isNegative = b.balance < -0.5
+                                                return (
+                                                    <div key={i} className="glass-card" style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px', animation: `slideInLeft 0.4s ${i * 0.08}s forwards`, opacity: 0 }}>
+                                                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: `linear-gradient(135deg, ${COLORS[i % COLORS.length]}, ${COLORS[(i + 1) % COLORS.length]})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '800', flexShrink: 0 }}>
+                                                            {b.name[0]?.toUpperCase()}
+                                                        </div>
+                                                        <div style={{ flex: 1 }}>
+                                                            <div style={{ fontSize: '13px', fontWeight: '700' }}>{b.name}</div>
+                                                            <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>จ่ายไป {Math.round(b.paid).toLocaleString()} {mainCurrency}</div>
+                                                        </div>
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <div style={{ fontSize: '14px', fontWeight: '800', color: isPositive ? '#34D399' : isNegative ? '#FB7185' : 'rgba(255,255,255,0.4)' }}>
+                                                                {isPositive ? '+' : ''}{Math.round(b.balance).toLocaleString()}
+                                                            </div>
+                                                            <div style={{ fontSize: '10px', color: isPositive ? '#34D399' : isNegative ? '#FB7185' : 'rgba(255,255,255,0.3)' }}>
+                                                                {isPositive ? 'ได้คืน' : isNegative ? 'ต้องจ่าย' : 'เท่ากัน'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+
+                                            {/* Transfers */}
+                                            {settlements.transfers?.length > 0 && (
+                                                <>
+                                                    <div style={{ fontSize: '12px', fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginTop: '8px' }}>💸 รายการโอน (จำนวนน้อยที่สุด)</div>
+                                                    {settlements.transfers.map((t, i) => (
+                                                        <div key={i} style={{ background: 'linear-gradient(135deg, rgba(251,113,133,0.1), rgba(52,211,153,0.1))', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '14px', padding: '14px', display: 'flex', alignItems: 'center', gap: '10px', animation: `fadeInUp 0.5s ${0.3 + i * 0.1}s forwards`, opacity: 0 }}>
+                                                            <div style={{ background: 'rgba(251,113,133,0.2)', borderRadius: '10px', padding: '8px 10px', fontSize: '12px', fontWeight: '800', color: '#FB7185' }}>
+                                                                {t.from}
+                                                            </div>
+                                                            <div style={{ flex: 1, textAlign: 'center' }}>
+                                                                <div style={{ fontSize: '18px', fontWeight: '800', color: '#38BDF8' }}>
+                                                                    {CURRENCY_SYMBOLS[mainCurrency] || ''}{t.amount.toLocaleString()}
+                                                                </div>
+                                                                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>→ โอนให้ →</div>
+                                                            </div>
+                                                            <div style={{ background: 'rgba(52,211,153,0.2)', borderRadius: '10px', padding: '8px 10px', fontSize: '12px', fontWeight: '800', color: '#34D399' }}>
+                                                                {t.to}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                             )}
 

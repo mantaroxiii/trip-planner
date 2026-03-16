@@ -143,6 +143,12 @@ export default function TripPage() {
   const [members, setMembers] = useState([])
   const [showMembers, setShowMembers] = useState(false)
 
+  // Flight & Hotel info
+  const [travelInfo, setTravelInfo] = useState({ flights: [], hotels: [] })
+  const [showTravelForm, setShowTravelForm] = useState(false)
+  const [editingTravel, setEditingTravel] = useState(null) // 'flight' or 'hotel'
+  const [travelDraft, setTravelDraft] = useState({})
+
   const CURRENCY_MAP = {
     'japan': 'JPY', 'ญี่ปุ่น': 'JPY', 'tokyo': 'JPY', 'osaka': 'JPY', 'kyoto': 'JPY', 'kyushu': 'JPY', 'hokkaido': 'JPY', 'คิวชู': 'JPY', 'โตเกียว': 'JPY', 'โอซาก้า': 'JPY',
     'korea': 'KRW', 'เกาหลี': 'KRW', 'seoul': 'KRW', 'busan': 'KRW', 'โซล': 'KRW',
@@ -236,6 +242,20 @@ export default function TripPage() {
       } catch (e) { }
     }
   }, [session, id])
+
+  // Travel info load
+  useEffect(() => {
+    if (id) {
+      const saved = localStorage.getItem(`travel-${id}`)
+      if (saved) try { setTravelInfo(JSON.parse(saved)) } catch (e) { }
+    }
+  }, [id])
+
+  const saveTravelInfo = (info) => { setTravelInfo(info); if (id) localStorage.setItem(`travel-${id}`, JSON.stringify(info)) }
+  const addFlight = (f) => { const info = { ...travelInfo, flights: [...travelInfo.flights, f] }; saveTravelInfo(info); setShowTravelForm(false) }
+  const addHotel = (h) => { const info = { ...travelInfo, hotels: [...travelInfo.hotels, h] }; saveTravelInfo(info); setShowTravelForm(false) }
+  const removeFlight = (i) => { const info = { ...travelInfo, flights: travelInfo.flights.filter((_, j) => j !== i) }; saveTravelInfo(info) }
+  const removeHotel = (i) => { const info = { ...travelInfo, hotels: travelInfo.hotels.filter((_, j) => j !== i) }; saveTravelInfo(info) }
 
   // Expense helpers
   const saveExpenses = (map) => { setExpenses(map); if (id) localStorage.setItem(`budget-${id}`, JSON.stringify(map)) }
@@ -1098,6 +1118,100 @@ export default function TripPage() {
         {showProposalForm && <ProposalFormSheet />}
         {showGaps && <FillGapsSheet />}
         {showTimeline && <TimelinePreview />}
+
+        {/* Travel Info Modal */}
+        {showTravelForm && (
+          <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowTravelForm(false) }}>
+            <div className="modal-sheet" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+              <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+              <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '16px' }}>✈️ เที่ยวบิน & ที่พัก</div>
+
+              {/* Existing Flights */}
+              {travelInfo.flights.map((f, i) => (
+                <div key={i} style={{ background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', borderRadius: '14px', padding: '12px', marginBottom: '8px', position: 'relative' }}>
+                  <button onClick={() => removeFlight(i)} style={{ position: 'absolute', top: '6px', right: '8px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', opacity: 0.5 }}>✕</button>
+                  <div style={{ fontWeight: '800', fontSize: '14px', color: '#1E40AF' }}>✈️ {f.airline} {f.flightNo}</div>
+                  <div style={{ fontSize: '12px', color: '#3B82F6', marginTop: '4px' }}>
+                    🛫 {f.departure || '-'} → 🛬 {f.arrival || '-'} {f.terminal ? `· Terminal ${f.terminal}` : ''}
+                  </div>
+                </div>
+              ))}
+
+              {/* Existing Hotels */}
+              {travelInfo.hotels.map((h, i) => (
+                <div key={i} style={{ background: 'linear-gradient(135deg,#FFF7ED,#FEF3C7)', borderRadius: '14px', padding: '12px', marginBottom: '8px', position: 'relative' }}>
+                  <button onClick={() => removeHotel(i)} style={{ position: 'absolute', top: '6px', right: '8px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', opacity: 0.5 }}>✕</button>
+                  <div style={{ fontWeight: '800', fontSize: '14px', color: '#92400E' }}>🏨 {h.name}</div>
+                  <div style={{ fontSize: '12px', color: '#B45309', marginTop: '4px' }}>
+                    📍 {h.address || '-'} {h.bookingRef ? `· Ref: ${h.bookingRef}` : ''}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#D97706', marginTop: '2px' }}>
+                    Check-in {h.checkIn || '-'} → Check-out {h.checkOut || '-'}
+                  </div>
+                </div>
+              ))}
+
+              {/* Add Flight Form */}
+              {editingTravel === 'flight' ? (
+                <div style={{ background: '#F0F9FF', borderRadius: '12px', padding: '12px', marginTop: '8px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0369A1', marginBottom: '8px' }}>✈️ เพิ่มเที่ยวบิน</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <input placeholder="สายการบิน" value={travelDraft.airline || ''} onChange={e => setTravelDraft(d => ({ ...d, airline: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #BAE6FD', fontSize: '13px', fontFamily: 'inherit' }} />
+                    <input placeholder="เลขเที่ยวบิน" value={travelDraft.flightNo || ''} onChange={e => setTravelDraft(d => ({ ...d, flightNo: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #BAE6FD', fontSize: '13px', fontFamily: 'inherit' }} />
+                    <input placeholder="ออก (เช่น 09:00)" value={travelDraft.departure || ''} onChange={e => setTravelDraft(d => ({ ...d, departure: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #BAE6FD', fontSize: '13px', fontFamily: 'inherit' }} />
+                    <input placeholder="ถึง (เช่น 14:30)" value={travelDraft.arrival || ''} onChange={e => setTravelDraft(d => ({ ...d, arrival: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #BAE6FD', fontSize: '13px', fontFamily: 'inherit' }} />
+                    <input placeholder="Terminal" value={travelDraft.terminal || ''} onChange={e => setTravelDraft(d => ({ ...d, terminal: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #BAE6FD', fontSize: '13px', fontFamily: 'inherit' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                    <button onClick={() => setEditingTravel(null)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #BAE6FD', background: 'white', cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit' }}>ยกเลิก</button>
+                    <button onClick={() => { if (travelDraft.airline) { addFlight(travelDraft); setTravelDraft({}); setEditingTravel(null) } }}
+                      style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: '#0EA5E9', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit' }}>บันทึก</button>
+                  </div>
+                </div>
+              ) : editingTravel === 'hotel' ? (
+                <div style={{ background: '#FFF7ED', borderRadius: '12px', padding: '12px', marginTop: '8px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E', marginBottom: '8px' }}>🏨 เพิ่มที่พัก</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <input placeholder="ชื่อที่พัก" value={travelDraft.name || ''} onChange={e => setTravelDraft(d => ({ ...d, name: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #FED7AA', fontSize: '13px', fontFamily: 'inherit', gridColumn: '1 / -1' }} />
+                    <input placeholder="ที่อยู่" value={travelDraft.address || ''} onChange={e => setTravelDraft(d => ({ ...d, address: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #FED7AA', fontSize: '13px', fontFamily: 'inherit', gridColumn: '1 / -1' }} />
+                    <input placeholder="Check-in (เช่น 15:00)" value={travelDraft.checkIn || ''} onChange={e => setTravelDraft(d => ({ ...d, checkIn: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #FED7AA', fontSize: '13px', fontFamily: 'inherit' }} />
+                    <input placeholder="Check-out (เช่น 11:00)" value={travelDraft.checkOut || ''} onChange={e => setTravelDraft(d => ({ ...d, checkOut: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #FED7AA', fontSize: '13px', fontFamily: 'inherit' }} />
+                    <input placeholder="Booking Ref" value={travelDraft.bookingRef || ''} onChange={e => setTravelDraft(d => ({ ...d, bookingRef: e.target.value }))}
+                      style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid #FED7AA', fontSize: '13px', fontFamily: 'inherit', gridColumn: '1 / -1' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                    <button onClick={() => setEditingTravel(null)} style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '1px solid #FED7AA', background: 'white', cursor: 'pointer', fontSize: '12px', fontFamily: 'inherit' }}>ยกเลิก</button>
+                    <button onClick={() => { if (travelDraft.name) { addHotel(travelDraft); setTravelDraft({}); setEditingTravel(null) } }}
+                      style={{ flex: 1, padding: '8px', borderRadius: '8px', border: 'none', background: '#F59E0B', color: 'white', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit' }}>บันทึก</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                  <button onClick={() => { setTravelDraft({}); setEditingTravel('flight') }}
+                    style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '2px dashed #BAE6FD', background: 'rgba(14,165,233,0.05)', cursor: 'pointer', fontSize: '13px', fontWeight: '700', color: '#0369A1', fontFamily: 'inherit' }}>
+                    ✈️ + เที่ยวบิน
+                  </button>
+                  <button onClick={() => { setTravelDraft({}); setEditingTravel('hotel') }}
+                    style={{ flex: 1, padding: '12px', borderRadius: '10px', border: '2px dashed #FED7AA', background: 'rgba(245,158,11,0.05)', cursor: 'pointer', fontSize: '13px', fontWeight: '700', color: '#92400E', fontFamily: 'inherit' }}>
+                    🏨 + ที่พัก
+                  </button>
+                </div>
+              )}
+
+              <button onClick={() => setShowTravelForm(false)}
+                className="btn-ghost" style={{ width: '100%', marginTop: '16px' }}>ปิด</button>
+            </div>
+          </div>
+        )}
         {/* Members Modal */}
         {showMembers && (
           <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowMembers(false) }}>
@@ -1182,9 +1296,13 @@ export default function TripPage() {
               style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit', backdropFilter: 'blur(4px)' }}>
               ← Trips
             </button>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button onClick={() => setShowTravelForm(true)}
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
+                ✈️
+              </button>
               <button onClick={() => setShowTimeline(true)}
-                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                 🗺️
               </button>
               <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', overflow: 'hidden' }}>
@@ -1206,17 +1324,17 @@ export default function TripPage() {
                 ))}
               </div>
               <button onClick={copyShareLink}
-                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', fontFamily: 'inherit' }}>
                 🔗 แชร์
               </button>
               <button onClick={() => setShowConverter(c => !c)}
-                style={{ background: showConverter ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                style={{ background: showConverter ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                 💱
               </button>
               {isOwner && (
                 <>
                   <button onClick={() => { loadProposals(trip.id); setShowProposals(true) }}
-                    style={{ position: 'relative', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                    style={{ position: 'relative', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                     🔔
                     {proposals.filter(p => p.status === 'pending').length > 0 && (
                       <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#F97316', borderRadius: '99px', width: '16px', height: '16px', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1225,11 +1343,11 @@ export default function TripPage() {
                     )}
                   </button>
                   <button onClick={() => { setTempProvider(provider); setTempKey(apiKey); setShowSettings(true) }}
-                    style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '15px', fontFamily: 'inherit' }}>
+                    style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontFamily: 'inherit' }}>
                     ⚙️
                   </button>
                   <button onClick={() => setShowMembers(true)}
-                    style={{ position: 'relative', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                    style={{ position: 'relative', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                     👥
                     {members.length > 0 && (
                       <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#10B981', borderRadius: '99px', width: '16px', height: '16px', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1291,6 +1409,23 @@ export default function TripPage() {
                 {exchangeRate ? `1 ${foreignCurrency} = ${exchangeRate.toLocaleString('th-TH', { maximumFractionDigits: 4 })} THB` : '⏳ กำลังโหลดอัตราแลกเปลี่ยน...'}
               </div>
             </div>
+          </div>
+        )}
+        {/* Travel Info Cards */}
+        {(travelInfo.flights.length > 0 || travelInfo.hotels.length > 0) && (
+          <div style={{ padding: '8px 12px', display: 'flex', gap: '6px', overflowX: 'auto', background: 'rgba(255,255,255,0.3)' }}>
+            {travelInfo.flights.map((f, i) => (
+              <div key={`f${i}`} onClick={() => setShowTravelForm(true)} style={{ flexShrink: 0, background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', minWidth: '140px', border: '1px solid rgba(59,130,246,0.15)' }}>
+                <div style={{ fontSize: '12px', fontWeight: '800', color: '#1E40AF' }}>✈️ {f.airline} {f.flightNo}</div>
+                <div style={{ fontSize: '10px', color: '#3B82F6', marginTop: '2px' }}>🛥 {f.departure || '-'} → 🛤 {f.arrival || '-'}</div>
+              </div>
+            ))}
+            {travelInfo.hotels.map((h, i) => (
+              <div key={`h${i}`} onClick={() => setShowTravelForm(true)} style={{ flexShrink: 0, background: 'linear-gradient(135deg,#FFF7ED,#FEF3C7)', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', minWidth: '140px', border: '1px solid rgba(245,158,11,0.15)' }}>
+                <div style={{ fontSize: '12px', fontWeight: '800', color: '#92400E' }}>🏨 {h.name}</div>
+                <div style={{ fontSize: '10px', color: '#D97706', marginTop: '2px' }}>In {h.checkIn || '-'} Out {h.checkOut || '-'}</div>
+              </div>
+            ))}
           </div>
         )}
         {/* Day tabs */}
@@ -1560,14 +1695,25 @@ export default function TripPage() {
 
           {/* Spending Report - visible to owner + members */}
           {!isGuest && (
-            <div onClick={() => router.push(`/trip/spending?id=${id}`)}
-              style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(14,165,233,0.3)', transition: 'transform 0.2s', marginTop: '10px' }}>
-              <div style={{ fontSize: '28px' }}>📊</div>
-              <div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Spending Report</div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสรุปค่าใช้จ่าย · กราฟ · Activity Log</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+              <div onClick={() => router.push(`/trip/spending?id=${id}`)}
+                style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(14,165,233,0.3)', transition: 'transform 0.2s' }}>
+                <div style={{ fontSize: '28px' }}>📊</div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Spending Report & Split Bill</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสรุปค่าใช้จ่าย · หารบิล · กราฟ · Log</div>
+                </div>
+                <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
               </div>
-              <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
+              <div onClick={() => router.push(`/trip/map?id=${id}`)}
+                style={{ background: 'linear-gradient(135deg,#065F46,#10B981)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(16,185,129,0.3)', transition: 'transform 0.2s' }}>
+                <div style={{ fontSize: '28px' }}>📍</div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Map View</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสถานที่บนแผนที่ · เส้นทางแต่ละวัน</div>
+                </div>
+                <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
+              </div>
             </div>
           )}
           <div style={{ fontSize: '11px', color: '#38BDF8', textAlign: 'center', marginTop: '10px' }}>
