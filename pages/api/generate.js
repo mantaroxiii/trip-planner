@@ -33,6 +33,8 @@ Return ONLY a valid JSON object — no markdown, no code blocks, no explanation.
           "type": "transport",
           "title": "Activity title",
           "detail": "Extra detail or null",
+          "lat": 35.6762,
+          "lng": 139.6503,
           "warning": false
         }
       ]
@@ -47,7 +49,8 @@ Rules:
 - Set warning: true for anything needing advance booking
 - Include meal suggestions if not in the notes
 - Group activities geographically each day
-- A typical day should have 5–8 events`
+- A typical day should have 5–8 events
+- IMPORTANT: Include real, accurate GPS coordinates (lat/lng) for EVERY event. Use the actual latitude and longitude of the location. This is critical for map view.`
 
 async function callClaude(apiKey, destination, dates, notes, lang) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
