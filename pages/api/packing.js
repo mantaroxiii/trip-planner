@@ -35,8 +35,10 @@ Dates: ${dates || 'Unknown'}
 Travelers: ${travelersDesc || '1 person'}
 Activities: ${activities}
 
-Generate a packing list organized BY PERSON TYPE. Do NOT create generic categories like "เสื้อผ้าทั่วไป".
-Instead, create separate categories for each traveler type, plus shared items.
+Generate a packing list organized BY PERSON TYPE. 
+FORBIDDEN: Do NOT create generic categories like "เสื้อผ้าทั่วไป", "เสื้อผ้า", "อุปกรณ์อาบน้ำ", "ของใช้ส่วนตัว".
+Instead, put ALL clothing, toiletries, and personal items INSIDE each person's category.
+Create these categories ONLY:
 
 ${travelers?.men > 0 ? `- "👨 ของผู้ชาย" — clothes, toiletries, accessories specific to ${travelers.men} men` : ''}
 ${travelers?.women > 0 ? `- "👩 ของผู้หญิง" — clothes, skincare, makeup, sanitary products, accessories for ${travelers.women} women` : ''}

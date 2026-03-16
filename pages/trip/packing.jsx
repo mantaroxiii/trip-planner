@@ -19,6 +19,12 @@ export default function PackingPage() {
     const [generating, setGenerating] = useState(false)
     const [error, setError] = useState('')
 
+    // Edit state
+    const [editingItem, setEditingItem] = useState(null) // { catIdx, itemIdx }
+    const [editText, setEditText] = useState('')
+    const [addingTo, setAddingTo] = useState(null) // catIdx
+    const [addText, setAddText] = useState('')
+
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session: s } }) => {
             if (!s) { router.replace('/login'); return }
@@ -55,6 +61,11 @@ export default function PackingPage() {
         setLoading(false)
     }
 
+    // Save to localStorage helper
+    const saveToLocal = (data, checkedMap, trav) => {
+        localStorage.setItem(`packing-${id}`, JSON.stringify({ data, checked: checkedMap, travelers: trav }))
+    }
+
     const generate = async () => {
         if (!trip?.plan_json) { setError('ยังไม่มีแพลนทริป'); return }
         setGenerating(true); setError('')
@@ -74,8 +85,7 @@ export default function PackingPage() {
             setPackingData(data)
             setChecked({})
             setShowForm(false)
-            // Save to localStorage
-            localStorage.setItem(`packing-${id}`, JSON.stringify({ data, checked: {}, travelers }))
+            saveToLocal(data, {}, travelers)
         } catch (e) {
             setError(e.message)
         } finally {
@@ -87,10 +97,52 @@ export default function PackingPage() {
         const key = `${catIdx}-${itemIdx}`
         const newChecked = { ...checked, [key]: !checked[key] }
         setChecked(newChecked)
-        // Auto-save
-        if (packingData) {
-            localStorage.setItem(`packing-${id}`, JSON.stringify({ data: packingData, checked: newChecked, travelers }))
-        }
+        saveToLocal(packingData, newChecked, travelers)
+    }
+
+    // Edit item
+    const startEdit = (catIdx, itemIdx) => {
+        setEditingItem({ catIdx, itemIdx })
+        setEditText(packingData.categories[catIdx].items[itemIdx])
+    }
+    const saveEdit = () => {
+        if (!editingItem || !editText.trim()) return
+        const newData = JSON.parse(JSON.stringify(packingData))
+        newData.categories[editingItem.catIdx].items[editingItem.itemIdx] = editText.trim()
+        setPackingData(newData)
+        setEditingItem(null)
+        setEditText('')
+        saveToLocal(newData, checked, travelers)
+    }
+
+    // Delete item
+    const deleteItem = (catIdx, itemIdx) => {
+        const newData = JSON.parse(JSON.stringify(packingData))
+        newData.categories[catIdx].items.splice(itemIdx, 1)
+        // Rebuild checked map (indices shifted)
+        const newChecked = {}
+        newData.categories.forEach((cat, ci) => {
+            cat.items.forEach((_, ii) => {
+                const oldKey = ci === catIdx && ii >= itemIdx ? `${ci}-${ii + 1}` : `${ci}-${ii}`
+                if (checked[oldKey]) newChecked[`${ci}-${ii}`] = true
+            })
+        })
+        // Remove empty categories
+        newData.categories = newData.categories.filter(c => c.items.length > 0)
+        setPackingData(newData)
+        setChecked(newChecked)
+        saveToLocal(newData, newChecked, travelers)
+    }
+
+    // Add item
+    const addItem = (catIdx) => {
+        if (!addText.trim()) return
+        const newData = JSON.parse(JSON.stringify(packingData))
+        newData.categories[catIdx].items.push(addText.trim())
+        setPackingData(newData)
+        setAddingTo(null)
+        setAddText('')
+        saveToLocal(newData, checked, travelers)
     }
 
     const totalItems = packingData?.categories?.reduce((sum, c) => sum + c.items.length, 0) || 0
@@ -167,7 +219,7 @@ export default function PackingPage() {
                                 <span style={{ fontSize: '11px', color: '#64748b' }}>
                                     {progress === 100 ? '✅ จัดกระเป๋าครบแล้ว!' : `เหลืออีก ${totalItems - checkedCount} ชิ้น`}
                                 </span>
-                                <button onClick={() => { setShowForm(true); setPackingData(null) }}
+                                <button onClick={() => { setShowForm(true) }}
                                     style={{ fontSize: '11px', color: '#0EA5E9', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '600', fontFamily: 'inherit' }}>
                                     🔄 สร้างใหม่
                                 </button>
@@ -224,7 +276,7 @@ export default function PackingPage() {
                     {packingData && !showForm && packingData.categories?.map((cat, ci) => {
                         const catChecked = cat.items.filter((_, ii) => checked[`${ci}-${ii}`]).length
                         const catTotal = cat.items.length
-                        const catDone = catChecked === catTotal
+                        const catDone = catChecked === catTotal && catTotal > 0
                         return (
                             <div key={ci} className="pack-card" style={{ background: 'rgba(255,255,255,0.9)', borderRadius: '16px', marginBottom: '10px', overflow: 'hidden', boxShadow: '0 2px 10px rgba(14,165,233,0.06)', border: catDone ? '1.5px solid #86EFAC' : '1px solid rgba(14,165,233,0.1)' }}>
                                 <div style={{ padding: '12px 14px', background: catDone ? 'rgba(16,185,129,0.08)' : 'rgba(14,165,233,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -232,20 +284,66 @@ export default function PackingPage() {
                                         <span style={{ fontSize: '20px' }}>{cat.icon}</span>
                                         <span style={{ fontSize: '14px', fontWeight: '700', color: '#0C4A6E' }}>{cat.name}</span>
                                     </div>
-                                    <span style={{ fontSize: '11px', fontWeight: '600', color: catDone ? '#10B981' : '#64748b', background: catDone ? '#D1FAE5' : '#F1F5F9', padding: '2px 8px', borderRadius: '99px' }}>
-                                        {catDone ? '✅' : `${catChecked}/${catTotal}`}
-                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontSize: '11px', fontWeight: '600', color: catDone ? '#10B981' : '#64748b', background: catDone ? '#D1FAE5' : '#F1F5F9', padding: '2px 8px', borderRadius: '99px' }}>
+                                            {catDone ? '✅' : `${catChecked}/${catTotal}`}
+                                        </span>
+                                        <button onClick={() => { setAddingTo(addingTo === ci ? null : ci); setAddText('') }}
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px', opacity: 0.6, padding: '2px' }}
+                                            title="เพิ่มรายการ">➕</button>
+                                    </div>
                                 </div>
+
+                                {/* Add item form */}
+                                {addingTo === ci && (
+                                    <div style={{ padding: '8px 14px', display: 'flex', gap: '6px', background: 'rgba(14,165,233,0.04)', borderBottom: '1px solid rgba(14,165,233,0.08)' }}>
+                                        <input value={addText} onChange={e => setAddText(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && addItem(ci)}
+                                            placeholder="พิมพ์ชื่อรายการ..."
+                                            autoFocus
+                                            style={{ flex: 1, border: '1.5px solid #BAE6FD', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', color: '#0C4A6E' }} />
+                                        <button onClick={() => addItem(ci)}
+                                            style={{ background: '#0EA5E9', color: 'white', border: 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}>เพิ่ม</button>
+                                    </div>
+                                )}
+
                                 <div style={{ padding: '4px 0' }}>
                                     {cat.items.map((item, ii) => {
                                         const isChecked = checked[`${ci}-${ii}`]
+                                        const isEditing = editingItem?.catIdx === ci && editingItem?.itemIdx === ii
                                         return (
-                                            <div key={ii} className="check-item" onClick={() => toggleCheck(ci, ii)}
+                                            <div key={ii} className="check-item"
                                                 style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', opacity: isChecked ? 0.5 : 1 }}>
-                                                <div style={{ width: '22px', height: '22px', borderRadius: '7px', border: isChecked ? 'none' : '2px solid #BAE6FD', background: isChecked ? 'linear-gradient(135deg,#10B981,#34D399)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.2s' }}>
+                                                {/* Checkbox */}
+                                                <div onClick={() => toggleCheck(ci, ii)}
+                                                    style={{ width: '22px', height: '22px', borderRadius: '7px', border: isChecked ? 'none' : '2px solid #BAE6FD', background: isChecked ? 'linear-gradient(135deg,#10B981,#34D399)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.2s', cursor: 'pointer' }}>
                                                     {isChecked && <span style={{ color: 'white', fontSize: '12px', fontWeight: '800' }}>✓</span>}
                                                 </div>
-                                                <span style={{ fontSize: '14px', color: '#1E293B', textDecoration: isChecked ? 'line-through' : 'none', fontWeight: '500' }}>{item}</span>
+
+                                                {/* Item text or edit input */}
+                                                {isEditing ? (
+                                                    <div style={{ flex: 1, display: 'flex', gap: '6px' }}>
+                                                        <input value={editText} onChange={e => setEditText(e.target.value)}
+                                                            onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingItem(null) }}
+                                                            autoFocus
+                                                            style={{ flex: 1, border: '1.5px solid #0EA5E9', borderRadius: '6px', padding: '4px 8px', fontSize: '13px', outline: 'none', fontFamily: 'inherit', color: '#0C4A6E' }} />
+                                                        <button onClick={saveEdit}
+                                                            style={{ background: '#0EA5E9', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit' }}>✓</button>
+                                                        <button onClick={() => setEditingItem(null)}
+                                                            style={{ background: '#F1F5F9', color: '#64748b', border: 'none', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <span onClick={() => toggleCheck(ci, ii)}
+                                                            style={{ flex: 1, fontSize: '14px', color: '#1E293B', textDecoration: isChecked ? 'line-through' : 'none', fontWeight: '500', cursor: 'pointer' }}>{item}</span>
+                                                        <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }}>
+                                                            <button onClick={() => startEdit(ci, ii)}
+                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', opacity: 0.4, padding: '2px' }} title="แก้ไข">✏️</button>
+                                                            <button onClick={() => deleteItem(ci, ii)}
+                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', opacity: 0.4, padding: '2px' }} title="ลบ">🗑️</button>
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
                                         )
                                     })}

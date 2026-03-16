@@ -76,16 +76,20 @@ export default async function handler(req, res) {
 
         const weather = daily.time.map((date, i) => {
             const code = daily.weather_code[i]
-            const w = weatherMap[code] || { icon: '🌡️', desc: `รหัส ${code}` }
+            const tempMax = daily.temperature_2m_max[i]
+            const tempMin = daily.temperature_2m_min[i]
+            // Skip entries with null/undefined data
+            if (code == null || tempMax == null || tempMin == null) return null
+            const w = weatherMap[code] || { icon: '🌡️', desc: 'ไม่ทราบ' }
             return {
                 date,
                 icon: w.icon,
                 desc: w.desc,
-                tempMax: Math.round(daily.temperature_2m_max[i]),
-                tempMin: Math.round(daily.temperature_2m_min[i]),
-                rainChance: daily.precipitation_probability_max[i],
+                tempMax: Math.round(tempMax),
+                tempMin: Math.round(tempMin),
+                rainChance: daily.precipitation_probability_max[i] || 0,
             }
-        })
+        }).filter(Boolean)
 
         return res.json({ weather, city: name, country })
     } catch (e) {

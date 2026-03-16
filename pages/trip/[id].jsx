@@ -1081,7 +1081,11 @@ export default function TripPage() {
                   </div>
                 ) : !planWeather ? (
                   <div style={{ marginTop: '10px', fontSize: '12px', opacity: 0.5, textAlign: 'center' }}>⏳ กำลังโหลดพยากรณ์อากาศ...</div>
-                ) : null
+                ) : (
+                  <div style={{ marginTop: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '10px', padding: '8px 12px', textAlign: 'center' }}>
+                    <span style={{ fontSize: '12px', opacity: 0.6 }}>🌤️ พยากรณ์ยังไม่ถึงวันนี้ (ข้อมูลล่วงหน้า 16 วัน)</span>
+                  </div>
+                )
               })()}
             </div>
             <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
