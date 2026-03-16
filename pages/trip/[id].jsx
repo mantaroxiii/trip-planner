@@ -155,7 +155,8 @@ export default function TripPage() {
   }
 
   const copyShareLink = () => {
-    navigator.clipboard.writeText(window.location.href)
+    const base = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+    navigator.clipboard.writeText(`${base}/trip/${id}`)
     setShareToast(true)
     setTimeout(() => setShareToast(false), 2000)
   }
