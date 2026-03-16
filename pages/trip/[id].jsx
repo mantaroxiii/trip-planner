@@ -6,7 +6,7 @@ const COLORS = ['#0EA5E9', '#8B5CF6', '#F97316', '#10B981', '#EC4899', '#F59E0B'
 const LIGHT = ['#E0F2FE', '#EDE9FE', '#FFF7ED', '#D1FAE5', '#FCE7F3', '#FEF3C7', '#EEF2FF']
 
 const PROVIDERS = [
-  { id: 'gemini', name: 'Gemini Flash', logo: '🔵', free: true, model: 'gemini-1.5-flash' },
+  { id: 'gemini', name: 'Gemini 2.5 Flash', logo: '🔵', free: true, model: 'gemini-2.5-flash' },
   { id: 'claude', name: 'Claude', logo: '🟠', free: false, model: 'claude-sonnet-4-6', placeholder: 'sk-ant-api03-...', hintUrl: 'https://console.anthropic.com' },
   { id: 'openai', name: 'OpenAI', logo: '⚫', free: false, model: 'gpt-4o', placeholder: 'sk-proj-...', hintUrl: 'https://platform.openai.com/api-keys' },
 ]
@@ -57,9 +57,19 @@ export default function TripPage() {
   const [packingList, setPackingList] = useState(null)
   const [packingLoading, setPackingLoading] = useState(false)
   const [showPacking, setShowPacking] = useState(false)
+  const [showTimeline, setShowTimeline] = useState(false)
+
+  // Fill Gaps
+  const [gaps, setGaps] = useState([])
+  const [showGaps, setShowGaps] = useState(false)
+  const [gapsLoading, setGapsLoading] = useState(false)
+
+  // Note images (stored per activity key in localStorage)
+  const [noteImages, setNoteImages] = useState({})
 
   // UI state
   const [error, setError] = useState('')
+  const [apiError, setApiError] = useState('')  // for suggest/packing errors
   const [shareToast, setShareToast] = useState(false)
   const [editNotif, setEditNotif] = useState('')
   const [showSettings, setShowSettings] = useState(false)
@@ -92,8 +102,10 @@ export default function TripPage() {
     loadTrip()
     const savedChecked = localStorage.getItem(`checked-${id}`)
     const savedNotes = localStorage.getItem(`notes-${id}`)
+    const savedImages = localStorage.getItem(`noteImages-${id}`)
     if (savedChecked) setChecked(JSON.parse(savedChecked))
     if (savedNotes) setNoteMap(JSON.parse(savedNotes))
+    if (savedImages) setNoteImages(JSON.parse(savedImages))
   }, [session, id])
 
   // 3. Realtime
@@ -178,6 +190,7 @@ export default function TripPage() {
   const generatePacking = async () => {
     if (!plan) return
     setPackingLoading(true)
+    setApiError('')
     try {
       const res = await fetch('/api/packing', {
         method: 'POST',
@@ -185,9 +198,58 @@ export default function TripPage() {
         body: JSON.stringify({ destination, dates, plan }),
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed')
       if (data.categories) { setPackingList(data.categories); setShowPacking(true) }
-    } catch (e) { /* ignore */ }
+      else throw new Error('No packing data returned')
+    } catch (e) {
+      setApiError(`Packing list: ${e.message}`)
+    }
     setPackingLoading(false)
+  }
+
+  const generateGaps = async () => {
+    if (!plan) return
+    const day = plan.days[activeDay]
+    setGapsLoading(true)
+    setGaps([])
+    setApiError('')
+    try {
+      const res = await fetch('/api/fill-gaps', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destination, dates,
+          dayTitle: day.title,
+          dayDate: day.date,
+          events: day.events,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed')
+      if (data.gaps) { setGaps(data.gaps); setShowGaps(true) }
+    } catch (e) {
+      setApiError(`Fill gaps: ${e.message}`)
+    }
+    setGapsLoading(false)
+  }
+
+  const addGapToDay = async (gap) => {
+    const newPlan = JSON.parse(JSON.stringify(plan))
+    newPlan.days[activeDay].events.push(gap.suggestion)
+    newPlan.days[activeDay].events.sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+    setPlan(newPlan)
+    setGaps(prev => prev.filter(g => g.startTime !== gap.startTime))
+    await fetch(`/api/trips/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_json: newPlan }),
+    })
+  }
+
+  const saveNoteImage = (key, base64) => {
+    const next = { ...noteImages, [key]: base64 }
+    setNoteImages(next)
+    localStorage.setItem(`noteImages-${id}`, JSON.stringify(next))
   }
 
   const autoSaveDraft = (dest, dt, n) => {
@@ -258,6 +320,7 @@ export default function TripPage() {
     setSuggestingKey(key)
     setSuggestLoading(true)
     setSuggestions([])
+    setApiError('')
     try {
       const day = plan.days[dayIdx]
       const ev = day.events[evIdx]
@@ -272,8 +335,13 @@ export default function TripPage() {
         }),
       })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'AI suggestion failed')
       if (data.suggestions) setSuggestions(data.suggestions)
-    } catch (e) { setSuggestingKey(null) }
+      else throw new Error('No suggestions returned')
+    } catch (e) {
+      setApiError(e.message)
+      setSuggestingKey(null)
+    }
     setSuggestLoading(false)
   }
 
@@ -519,6 +587,182 @@ export default function TripPage() {
     </div>
   )
 
+  /* ─── FILL GAPS SHEET ─── */
+  const FillGapsSheet = () => (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowGaps(false) }}>
+      <div className="modal-sheet" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+        <div style={{ fontSize: '18px', fontWeight: '800', color: '#0C4A6E', marginBottom: '5px' }}>🔍 ช่วงเวลาว่างในวันนี้</div>
+        <div style={{ fontSize: '13px', color: '#38BDF8', marginBottom: '18px' }}>AI วิเคราะห์ตารางเวลาและเสนอสิ่งที่ง่ายต่อไป</div>
+        {gaps.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '30px 0', color: '#BAE6FD', fontSize: '14px' }}>ไม่พบช่วงว่างในวันนี้ แผนเต็มมากแล้ว! 🎉</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {gaps.map((gap, gi) => (
+              <div key={gi} style={{ background: 'rgba(255,255,255,0.8)', border: '1.5px solid rgba(14,165,233,0.15)', borderRadius: '14px', padding: '14px' }}>
+                <div style={{ fontSize: '11px', color: '#38BDF8', fontWeight: '700', marginBottom: '8px' }}>
+                  ⏰ {gap.startTime} – {gap.endTime} ({gap.duration})
+                </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '24px' }}>{gap.suggestion.icon}</span>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E' }}>{gap.suggestion.time} · {gap.suggestion.title}</div>
+                    {gap.suggestion.detail && <div style={{ fontSize: '12px', color: '#38BDF8', marginTop: '3px' }}>{gap.suggestion.detail}</div>}
+                  </div>
+                </div>
+                <button className="btn-primary" style={{ width: '100%', padding: '9px', fontSize: '13px' }} onClick={() => addGapToDay(gap)}>
+                  + เพิ่มลง Plan
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button className="btn-ghost" style={{ width: '100%', marginTop: '14px' }} onClick={() => setShowGaps(false)}>ปิด</button>
+      </div>
+    </div>
+  )
+
+  /* ─── TIMELINE PREVIEW ─── */
+  const TimelinePreview = () => {
+    const now = new Date()
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const timelineRef = { current: null }
+
+    const parseTime = (t) => {
+      if (!t) return null
+      const m = t.match(/(\d{1,2}):(\d{2})/)
+      return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : null
+    }
+
+    // Find current day index based on trip dates
+    const getTripDayIndex = () => {
+      if (!plan?.days) return 0
+      const today = now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+      const idx = plan.days.findIndex(d => d.date && d.date.includes(today.split(' ')[0]))
+      return idx >= 0 ? idx : 0
+    }
+
+    const currentDayIdx = getTripDayIndex()
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg,#0C4A6E,#0369A1,#0EA5E9)', zIndex: 1000, overflowY: 'auto', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+        ref={el => {
+          if (el && !timelineRef.current) {
+            timelineRef.current = el
+            const marker = el.querySelector('[data-current="true"]')
+            if (marker) setTimeout(() => marker.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)
+          }
+        }}>
+
+        {/* Header */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(12,74,110,0.95)', backdropFilter: 'blur(16px)', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>🗺️ Timeline Preview</div>
+            <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.7)', marginTop: '2px' }}>{plan?.tripTitle} · {plan?.days?.length} วัน</div>
+          </div>
+          <button onClick={() => setShowTimeline(false)}
+            style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+            ✕ ปิด
+          </button>
+        </div>
+
+        {/* Timeline Body */}
+        <div style={{ padding: '20px 16px 60px', maxWidth: '600px', margin: '0 auto' }}>
+          {plan?.days?.map((day, di) => {
+            const col = COLORS[di % COLORS.length]
+            const isCurrentDay = di === currentDayIdx
+            return (
+              <div key={di} style={{ marginBottom: '24px' }}>
+                {/* Day Header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '14px', background: col, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', boxShadow: `0 4px 15px ${col}55` }}>
+                    {day.emoji || '📍'}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>
+                      วัน {day.day} · {day.title}
+                      {isCurrentDay && <span style={{ fontSize: '10px', background: '#22d3ee', color: '#0C4A6E', padding: '2px 8px', borderRadius: '99px', marginLeft: '8px', fontWeight: '700' }}>วันนี้</span>}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.6)' }}>{day.date} {day.hotel ? `· 🏨 ${day.hotel}` : ''}</div>
+                  </div>
+                </div>
+
+                {/* Events Timeline */}
+                <div style={{ paddingLeft: '22px', borderLeft: `3px solid ${col}44`, marginLeft: '20px' }}>
+                  {day.events.map((ev, ei) => {
+                    const evMinutes = parseTime(ev.time)
+                    const nextEv = day.events[ei + 1]
+                    const nextMinutes = nextEv ? parseTime(nextEv.time) : null
+                    const isCurrent = isCurrentDay && evMinutes !== null && currentMinutes >= evMinutes && (nextMinutes === null || currentMinutes < nextMinutes)
+                    const isPast = isCurrentDay && evMinutes !== null && nextMinutes !== null && currentMinutes >= nextMinutes
+                    const isFuture = isCurrentDay && evMinutes !== null && currentMinutes < evMinutes
+                    const isDoneDay = di < currentDayIdx
+
+                    return (
+                      <div key={ei} data-current={isCurrent ? 'true' : undefined}
+                        style={{ position: 'relative', paddingBottom: '16px', opacity: (isDoneDay || isPast) ? 0.5 : 1, transition: 'all 0.3s' }}>
+
+                        {/* Timeline dot */}
+                        <div style={{
+                          position: 'absolute', left: '-28px', top: '4px',
+                          width: isCurrent ? '16px' : '10px',
+                          height: isCurrent ? '16px' : '10px',
+                          borderRadius: '99px',
+                          background: isCurrent ? '#22d3ee' : (isDoneDay || isPast) ? '#64748b' : col,
+                          border: isCurrent ? '3px solid white' : 'none',
+                          boxShadow: isCurrent ? '0 0 12px #22d3ee, 0 0 24px #22d3ee55' : 'none',
+                          transition: 'all 0.3s',
+                        }} />
+
+                        {/* Current time indicator */}
+                        {isCurrent && (
+                          <div style={{
+                            position: 'absolute', left: '-38px', top: '-10px',
+                            fontSize: '9px', color: '#22d3ee', fontWeight: '800',
+                            writingMode: 'vertical-lr', letterSpacing: '1px',
+                          }}>NOW</div>
+                        )}
+
+                        {/* Event Card */}
+                        <div style={{
+                          marginLeft: '8px',
+                          background: isCurrent ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.08)',
+                          border: isCurrent ? '1.5px solid rgba(34,211,238,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '12px',
+                          padding: '10px 12px',
+                          backdropFilter: 'blur(8px)',
+                          transition: 'all 0.3s',
+                          transform: isCurrent ? 'scale(1.02)' : 'scale(1)',
+                        }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '20px' }}>{(isDoneDay || isPast) ? '✅' : ev.icon}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '700', color: 'white', textDecoration: (isDoneDay || isPast) ? 'line-through' : 'none' }}>{ev.title}</span>
+                                <span style={{ fontSize: '11px', color: isCurrent ? '#22d3ee' : 'rgba(186,230,253,0.5)', fontFamily: 'monospace', fontWeight: '700' }}>{ev.time}</span>
+                              </div>
+                              {ev.detail && <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.5)', marginTop: '3px' }}>{ev.detail}</div>}
+                            </div>
+                          </div>
+                          <span style={{ display: 'inline-block', marginTop: '6px', fontSize: '9px', padding: '2px 8px', borderRadius: '99px', background: `${col}33`, color: col, fontWeight: '700' }}>{ev.type}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Bottom Status */}
+          <div style={{ textAlign: 'center', padding: '20px 0', color: 'rgba(186,230,253,0.5)', fontSize: '12px' }}>
+            🕐 อัปเดตตำแหน่งตามเวลาจริง · แตะ ✕ เพื่อปิด
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   /* ─── PROPOSAL FORM SHEET (for non-owner) ─── */
   const ProposalFormSheet = () => (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowProposalForm(false) }}>
@@ -629,6 +873,8 @@ export default function TripPage() {
         {showProposals && <ProposalsSheet />}
         {showPacking && packingList && <PackingSheet />}
         {showProposalForm && <ProposalFormSheet />}
+        {showGaps && <FillGapsSheet />}
+        {showTimeline && <TimelinePreview />}
 
         {/* Notifications */}
         {editNotif && (
@@ -639,6 +885,12 @@ export default function TripPage() {
         {shareToast && (
           <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg,#10B981,#34D399)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(16,185,129,0.35)' }}>
             ✅ คัดลอก link แล้ว!
+          </div>
+        )}
+        {apiError && (
+          <div style={{ position: 'fixed', top: '60px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(185,28,28,0.95)', backdropFilter: 'blur(8px)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(185,28,28,0.3)', cursor: 'pointer', maxWidth: '90vw', textAlign: 'center' }}
+            onClick={() => setApiError('')}>
+            ⚠️ {apiError} · แตะเพื่อปิด
           </div>
         )}
 
@@ -661,6 +913,10 @@ export default function TripPage() {
               ← Trips
             </button>
             <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => setShowTimeline(true)}
+                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                🗺️
+              </button>
               <button onClick={copyShareLink}
                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
                 🔗 แชร์
@@ -764,6 +1020,27 @@ export default function TripPage() {
                           rows={2} placeholder="เพิ่ม note ที่นี่..."
                           value={noteMap[key] || ''} onClick={e => e.stopPropagation()}
                           onChange={e => saveNote(key, e.target.value)} />
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
+                          <label style={{ fontSize: '11px', color: col, fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', background: `${col}15`, border: `1px solid ${col}33`, borderRadius: '8px', padding: '4px 10px' }}>
+                            🖼️ แนบรูป
+                            <input type="file" accept="image/*" style={{ display: 'none' }}
+                              onChange={e => {
+                                const file = e.target.files[0]
+                                if (!file) return
+                                const reader = new FileReader()
+                                reader.onload = ev => saveNoteImage(key, ev.target.result)
+                                reader.readAsDataURL(file)
+                              }} />
+                          </label>
+                          {noteImages[key] && (
+                            <span style={{ fontSize: '11px', color: '#ef4444', cursor: 'pointer' }}
+                              onClick={() => saveNoteImage(key, null)}>✕ ลบรูป</span>
+                          )}
+                        </div>
+                        {noteImages[key] && (
+                          <img src={noteImages[key]} alt="note" onClick={e => e.stopPropagation()}
+                            style={{ width: '100%', borderRadius: '10px', marginTop: '8px', maxHeight: '200px', objectFit: 'cover', border: `1.5px solid ${col}33` }} />
+                        )}
                       </div>
                     )}
                   </div>
@@ -779,10 +1056,16 @@ export default function TripPage() {
                 <button className="btn-ghost" style={{ flex: 1 }} onClick={() => setStep('draft')}>← แก้ Notes</button>
                 <button className="btn-primary" style={{ flex: 2 }} onClick={handleGenerate}>✨ Generate ใหม่</button>
               </div>
-              <button className="btn-ghost" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                onClick={generatePacking} disabled={packingLoading}>
-                {packingLoading ? 'AI กำลังสร้าง list...' : '🧳 สร้าง Packing List'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn-ghost" style={{ flex: 1, fontSize: '13px' }}
+                  onClick={generatePacking} disabled={packingLoading}>
+                  {packingLoading ? '...' : '🧳 Packing'}
+                </button>
+                <button className="btn-ghost" style={{ flex: 1, fontSize: '13px' }}
+                  onClick={generateGaps} disabled={gapsLoading}>
+                  {gapsLoading ? '...' : '🔍 เติม Slot ว่าง'}
+                </button>
+              </div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
