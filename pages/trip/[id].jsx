@@ -66,6 +66,8 @@ export default function TripPage() {
 
   // Note images (stored per activity key in localStorage)
   const [noteImages, setNoteImages] = useState({})
+  const [pendingImages, setPendingImages] = useState({})
+  const [previewImage, setPreviewImage] = useState(null)
 
   // UI state
   const [error, setError] = useState('')
@@ -246,10 +248,30 @@ export default function TripPage() {
     })
   }
 
-  const saveNoteImage = (key, base64) => {
-    const next = { ...noteImages, [key]: base64 }
+  const addPendingImage = (key, base64) => {
+    setPendingImages(prev => ({ ...prev, [key]: [...(prev[key] || []), base64] }))
+  }
+  const saveNoteImages = (key) => {
+    const pending = pendingImages[key] || []
+    if (pending.length === 0) return
+    const existing = noteImages[key] || []
+    const next = { ...noteImages, [key]: [...existing, ...pending] }
     setNoteImages(next)
     localStorage.setItem(`noteImages-${id}`, JSON.stringify(next))
+    setPendingImages(prev => { const p = { ...prev }; delete p[key]; return p })
+  }
+  const removeNoteImage = (key, idx) => {
+    const imgs = [...(noteImages[key] || [])]
+    imgs.splice(idx, 1)
+    const next = { ...noteImages, [key]: imgs.length ? imgs : undefined }
+    if (!imgs.length) delete next[key]
+    setNoteImages(next)
+    localStorage.setItem(`noteImages-${id}`, JSON.stringify(next))
+  }
+  const removePendingImage = (key, idx) => {
+    const imgs = [...(pendingImages[key] || [])]
+    imgs.splice(idx, 1)
+    setPendingImages(prev => ({ ...prev, [key]: imgs }))
   }
 
   const autoSaveDraft = (dest, dt, n) => {
@@ -624,121 +646,131 @@ export default function TripPage() {
 
   /* ─── TIMELINE PREVIEW ─── */
   const TimelinePreview = () => {
+    const [weatherData, setWeatherData] = useState(null)
+    const [weatherLoading, setWeatherLoading] = useState(true)
+
     const now = new Date()
     const currentMinutes = now.getHours() * 60 + now.getMinutes()
-    const timelineRef = { current: null }
 
-    const parseTime = (t) => {
-      if (!t) return null
-      const m = t.match(/(\d{1,2}):(\d{2})/)
-      return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : null
+    const parseTripDate = (dateStr) => {
+      if (!dateStr) return null
+      const thaiMonths = { 'ม.ค.': 0, 'ก.พ.': 1, 'มี.ค.': 2, 'เม.ย.': 3, 'พ.ค.': 4, 'มิ.ย.': 5, 'ก.ค.': 6, 'ส.ค.': 7, 'ก.ย.': 8, 'ต.ค.': 9, 'พ.ย.': 10, 'ธ.ค.': 11 }
+      const enMonths = { 'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5, 'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11 }
+      const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/)
+      if (iso) return new Date(iso[1], iso[2] - 1, iso[3])
+      for (const [th, mm] of Object.entries(thaiMonths)) {
+        if (dateStr.includes(th)) { const d = dateStr.match(/(\d{1,2})/); if (d) return new Date(now.getFullYear(), mm, parseInt(d[1])) }
+      }
+      for (const [en, mm] of Object.entries(enMonths)) {
+        if (dateStr.toLowerCase().includes(en)) { const d = dateStr.match(/(\d{1,2})/); if (d) return new Date(now.getFullYear(), mm, parseInt(d[1])) }
+      }
+      return null
     }
 
-    // Find current day index based on trip dates
-    const getTripDayIndex = () => {
-      if (!plan?.days) return 0
-      const today = now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
-      const idx = plan.days.findIndex(d => d.date && d.date.includes(today.split(' ')[0]))
-      return idx >= 0 ? idx : 0
-    }
+    const tripDates = plan?.days?.map(d => parseTripDate(d.date)) || []
+    const tripStartDate = tripDates.find(d => d) || null
+    const tripEndDate = tripDates.filter(d => d).pop() || null
+    const daysUntil = tripStartDate ? Math.ceil((tripStartDate - now) / 86400000) : null
+    const showCountdown = daysUntil && daysUntil > 0
 
-    const currentDayIdx = getTripDayIndex()
+    const getCurrentDayIdx = () => {
+      for (let i = 0; i < tripDates.length; i++) {
+        if (tripDates[i] && tripDates[i].toDateString() === now.toDateString()) return i
+      }
+      return -1
+    }
+    const currentDayIdx = getCurrentDayIdx()
+    const isTripEnded = tripEndDate && now > new Date(tripEndDate.getTime() + 86400000)
+
+    const parseTime = (t) => { if (!t) return null; const m = t.match(/(\d{1,2}):(\d{2})/); return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : null }
+
+    useEffect(() => {
+      if (!destination) { setWeatherLoading(false); return }
+      fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination }) })
+        .then(r => r.json()).then(d => { setWeatherData(d); setWeatherLoading(false) })
+        .catch(() => setWeatherLoading(false))
+    }, [])
+
+    const getWeather = (dayDate) => {
+      if (!weatherData?.weather || !dayDate) return null
+      const d = parseTripDate(dayDate)
+      if (!d) return null
+      return weatherData.weather.find(w => w.date === d.toISOString().split('T')[0])
+    }
 
     return (
       <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg,#0C4A6E,#0369A1,#0EA5E9)', zIndex: 1000, overflowY: 'auto', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
-        ref={el => {
-          if (el && !timelineRef.current) {
-            timelineRef.current = el
-            const marker = el.querySelector('[data-current="true"]')
-            if (marker) setTimeout(() => marker.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300)
-          }
-        }}>
+        ref={el => { if (el) { const m = el.querySelector('[data-current="true"]'); if (m) setTimeout(() => m.scrollIntoView({ behavior: 'smooth', block: 'center' }), 400) } }}>
 
-        {/* Header */}
-        <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(12,74,110,0.95)', backdropFilter: 'blur(16px)', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <div>
-            <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>🗺️ Timeline Preview</div>
-            <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.7)', marginTop: '2px' }}>{plan?.tripTitle} · {plan?.days?.length} วัน</div>
+        <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(12,74,110,0.95)', backdropFilter: 'blur(16px)', padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>🗺️ Timeline</div>
+              <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.7)', marginTop: '2px' }}>{plan?.tripTitle} · {plan?.days?.length} วัน{weatherData?.city ? ` · 📍 ${weatherData.city}` : ''}</div>
+            </div>
+            <button onClick={() => setShowTimeline(false)} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>✕</button>
           </div>
-          <button onClick={() => setShowTimeline(false)}
-            style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
-            ✕ ปิด
-          </button>
+          {showCountdown && (
+            <div style={{ marginTop: '10px', background: 'rgba(34,211,238,0.15)', border: '1px solid rgba(34,211,238,0.3)', borderRadius: '12px', padding: '12px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: '28px', fontWeight: '800', color: '#22d3ee' }}>⏳ {daysUntil}</div>
+              <div style={{ fontSize: '12px', color: 'rgba(186,230,253,0.8)', marginTop: '2px' }}>วัน ก่อนเริ่มทริป!</div>
+            </div>
+          )}
+          {currentDayIdx >= 0 && !isTripEnded && (
+            <div style={{ marginTop: '10px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '8px 14px', textAlign: 'center' }}>
+              <span style={{ fontSize: '13px', color: '#34d399', fontWeight: '700' }}>🟢 กำลังเที่ยววัน {currentDayIdx + 1}</span>
+            </div>
+          )}
+          {isTripEnded && (
+            <div style={{ marginTop: '10px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', borderRadius: '12px', padding: '8px 14px', textAlign: 'center' }}>
+              <span style={{ fontSize: '13px', color: '#a78bfa', fontWeight: '700' }}>✅ ทริปจบแล้ว · หวังว่าจะสนุก!</span>
+            </div>
+          )}
         </div>
 
-        {/* Timeline Body */}
         <div style={{ padding: '20px 16px 60px', maxWidth: '600px', margin: '0 auto' }}>
           {plan?.days?.map((day, di) => {
             const col = COLORS[di % COLORS.length]
             const isCurrentDay = di === currentDayIdx
+            const isDoneDay = currentDayIdx >= 0 ? di < currentDayIdx : (tripDates[di] && now > new Date(tripDates[di].getTime() + 86400000))
+            const w = getWeather(day.date)
             return (
               <div key={di} style={{ marginBottom: '24px' }}>
-                {/* Day Header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                  <div style={{ width: '44px', height: '44px', borderRadius: '14px', background: col, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', boxShadow: `0 4px 15px ${col}55` }}>
-                    {day.emoji || '📍'}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '14px', background: col, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', boxShadow: `0 4px 15px ${col}55` }}>{day.emoji || '📍'}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '15px', fontWeight: '800', color: 'white', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       วัน {day.day} · {day.title}
-                      {isCurrentDay && <span style={{ fontSize: '10px', background: '#22d3ee', color: '#0C4A6E', padding: '2px 8px', borderRadius: '99px', marginLeft: '8px', fontWeight: '700' }}>วันนี้</span>}
+                      {isCurrentDay && <span style={{ fontSize: '10px', background: '#22d3ee', color: '#0C4A6E', padding: '2px 8px', borderRadius: '99px', fontWeight: '700' }}>วันนี้</span>}
+                      {isDoneDay && <span style={{ fontSize: '10px', background: '#64748b', color: 'white', padding: '2px 8px', borderRadius: '99px', fontWeight: '700' }}>ผ่านแล้ว</span>}
                     </div>
-                    <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.6)' }}>{day.date} {day.hotel ? `· 🏨 ${day.hotel}` : ''}</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.6)' }}>{day.date}{day.hotel ? ` · 🏨 ${day.hotel}` : ''}</div>
                   </div>
+                  {w && (
+                    <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '12px', padding: '6px 10px', textAlign: 'center', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div style={{ fontSize: '20px' }}>{w.icon}</div>
+                      <div style={{ fontSize: '10px', color: 'white', fontWeight: '700' }}>{w.tempMax}°/{w.tempMin}°</div>
+                      {w.rainChance > 20 && <div style={{ fontSize: '9px', color: '#38BDF8' }}>💧{w.rainChance}%</div>}
+                    </div>
+                  )}
+                  {weatherLoading && <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.4)' }}>⏳</div>}
                 </div>
-
-                {/* Events Timeline */}
                 <div style={{ paddingLeft: '22px', borderLeft: `3px solid ${col}44`, marginLeft: '20px' }}>
                   {day.events.map((ev, ei) => {
-                    const evMinutes = parseTime(ev.time)
-                    const nextEv = day.events[ei + 1]
-                    const nextMinutes = nextEv ? parseTime(nextEv.time) : null
-                    const isCurrent = isCurrentDay && evMinutes !== null && currentMinutes >= evMinutes && (nextMinutes === null || currentMinutes < nextMinutes)
-                    const isPast = isCurrentDay && evMinutes !== null && nextMinutes !== null && currentMinutes >= nextMinutes
-                    const isFuture = isCurrentDay && evMinutes !== null && currentMinutes < evMinutes
-                    const isDoneDay = di < currentDayIdx
-
+                    const evMin = parseTime(ev.time)
+                    const nextMin = day.events[ei + 1] ? parseTime(day.events[ei + 1].time) : null
+                    const isCurrent = isCurrentDay && evMin !== null && currentMinutes >= evMin && (nextMin === null || currentMinutes < nextMin)
+                    const isPast = isDoneDay || (isCurrentDay && evMin !== null && nextMin !== null && currentMinutes >= nextMin)
                     return (
-                      <div key={ei} data-current={isCurrent ? 'true' : undefined}
-                        style={{ position: 'relative', paddingBottom: '16px', opacity: (isDoneDay || isPast) ? 0.5 : 1, transition: 'all 0.3s' }}>
-
-                        {/* Timeline dot */}
-                        <div style={{
-                          position: 'absolute', left: '-28px', top: '4px',
-                          width: isCurrent ? '16px' : '10px',
-                          height: isCurrent ? '16px' : '10px',
-                          borderRadius: '99px',
-                          background: isCurrent ? '#22d3ee' : (isDoneDay || isPast) ? '#64748b' : col,
-                          border: isCurrent ? '3px solid white' : 'none',
-                          boxShadow: isCurrent ? '0 0 12px #22d3ee, 0 0 24px #22d3ee55' : 'none',
-                          transition: 'all 0.3s',
-                        }} />
-
-                        {/* Current time indicator */}
-                        {isCurrent && (
-                          <div style={{
-                            position: 'absolute', left: '-38px', top: '-10px',
-                            fontSize: '9px', color: '#22d3ee', fontWeight: '800',
-                            writingMode: 'vertical-lr', letterSpacing: '1px',
-                          }}>NOW</div>
-                        )}
-
-                        {/* Event Card */}
-                        <div style={{
-                          marginLeft: '8px',
-                          background: isCurrent ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.08)',
-                          border: isCurrent ? '1.5px solid rgba(34,211,238,0.4)' : '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: '12px',
-                          padding: '10px 12px',
-                          backdropFilter: 'blur(8px)',
-                          transition: 'all 0.3s',
-                          transform: isCurrent ? 'scale(1.02)' : 'scale(1)',
-                        }}>
+                      <div key={ei} data-current={isCurrent ? 'true' : undefined} style={{ position: 'relative', paddingBottom: '16px', opacity: isPast ? 0.45 : 1 }}>
+                        <div style={{ position: 'absolute', left: '-28px', top: '4px', width: isCurrent ? '16px' : '10px', height: isCurrent ? '16px' : '10px', borderRadius: '99px', background: isCurrent ? '#22d3ee' : isPast ? '#64748b' : col, border: isCurrent ? '3px solid white' : 'none', boxShadow: isCurrent ? '0 0 12px #22d3ee' : 'none' }} />
+                        {isCurrent && <div style={{ position: 'absolute', left: '-38px', top: '-10px', fontSize: '9px', color: '#22d3ee', fontWeight: '800', writingMode: 'vertical-lr', letterSpacing: '1px' }}>NOW</div>}
+                        <div style={{ marginLeft: '8px', background: isCurrent ? 'rgba(34,211,238,0.15)' : 'rgba(255,255,255,0.08)', border: isCurrent ? '1.5px solid rgba(34,211,238,0.4)' : '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '10px 12px', transform: isCurrent ? 'scale(1.02)' : 'scale(1)', transition: 'all 0.3s' }}>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            <span style={{ fontSize: '20px' }}>{(isDoneDay || isPast) ? '✅' : ev.icon}</span>
+                            <span style={{ fontSize: '20px' }}>{isPast ? '✅' : ev.icon}</span>
                             <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '13px', fontWeight: '700', color: 'white', textDecoration: (isDoneDay || isPast) ? 'line-through' : 'none' }}>{ev.title}</span>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '13px', fontWeight: '700', color: 'white', textDecoration: isPast ? 'line-through' : 'none' }}>{ev.title}</span>
                                 <span style={{ fontSize: '11px', color: isCurrent ? '#22d3ee' : 'rgba(186,230,253,0.5)', fontFamily: 'monospace', fontWeight: '700' }}>{ev.time}</span>
                               </div>
                               {ev.detail && <div style={{ fontSize: '11px', color: 'rgba(186,230,253,0.5)', marginTop: '3px' }}>{ev.detail}</div>}
@@ -753,15 +785,16 @@ export default function TripPage() {
               </div>
             )
           })}
-
-          {/* Bottom Status */}
-          <div style={{ textAlign: 'center', padding: '20px 0', color: 'rgba(186,230,253,0.5)', fontSize: '12px' }}>
-            🕐 อัปเดตตำแหน่งตามเวลาจริง · แตะ ✕ เพื่อปิด
-          </div>
+          <div style={{ textAlign: 'center', padding: '20px 0', color: 'rgba(186,230,253,0.5)', fontSize: '12px' }}>🕐 ตำแหน่งตามเวลาจริง · พยากรณ์จาก Open-Meteo</div>
         </div>
       </div>
     )
   }
+
+
+
+
+  /* ─── PROPOSAL FORM SHEET (for non-owner) ─── */
 
   /* ─── PROPOSAL FORM SHEET (for non-owner) ─── */
   const ProposalFormSheet = () => (
@@ -875,6 +908,14 @@ export default function TripPage() {
         {showProposalForm && <ProposalFormSheet />}
         {showGaps && <FillGapsSheet />}
         {showTimeline && <TimelinePreview />}
+        {previewImage && (
+          <div onClick={() => setPreviewImage(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', padding: '20px' }}>
+            <img src={previewImage} alt="preview"
+              style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }} />
+            <div style={{ position: 'absolute', top: '16px', right: '16px', color: 'white', fontSize: '28px', cursor: 'pointer', opacity: 0.8 }}>✕</div>
+          </div>
+        )}
 
         {/* Notifications */}
         {editNotif && (
@@ -1020,26 +1061,51 @@ export default function TripPage() {
                           rows={2} placeholder="เพิ่ม note ที่นี่..."
                           value={noteMap[key] || ''} onClick={e => e.stopPropagation()}
                           onChange={e => saveNote(key, e.target.value)} />
-                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
                           <label style={{ fontSize: '11px', color: col, fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', background: `${col}15`, border: `1px solid ${col}33`, borderRadius: '8px', padding: '4px 10px' }}>
                             🖼️ แนบรูป
-                            <input type="file" accept="image/*" style={{ display: 'none' }}
+                            <input type="file" accept="image/*" multiple style={{ display: 'none' }}
                               onChange={e => {
-                                const file = e.target.files[0]
-                                if (!file) return
-                                const reader = new FileReader()
-                                reader.onload = ev => saveNoteImage(key, ev.target.result)
-                                reader.readAsDataURL(file)
+                                Array.from(e.target.files).forEach(file => {
+                                  const reader = new FileReader()
+                                  reader.onload = ev => addPendingImage(key, ev.target.result)
+                                  reader.readAsDataURL(file)
+                                })
+                                e.target.value = ''
                               }} />
                           </label>
-                          {noteImages[key] && (
-                            <span style={{ fontSize: '11px', color: '#ef4444', cursor: 'pointer' }}
-                              onClick={() => saveNoteImage(key, null)}>✕ ลบรูป</span>
+                          {(pendingImages[key]?.length > 0) && (
+                            <button onClick={() => saveNoteImages(key)}
+                              style={{ fontSize: '11px', color: 'white', fontWeight: '700', cursor: 'pointer', background: '#10B981', border: 'none', borderRadius: '8px', padding: '4px 12px', fontFamily: 'inherit' }}>
+                              💾 Save ({pendingImages[key].length} รูป)
+                            </button>
                           )}
                         </div>
-                        {noteImages[key] && (
-                          <img src={noteImages[key]} alt="note" onClick={e => e.stopPropagation()}
-                            style={{ width: '100%', borderRadius: '10px', marginTop: '8px', maxHeight: '200px', objectFit: 'cover', border: `1.5px solid ${col}33` }} />
+                        {/* Pending images (not saved yet) */}
+                        {pendingImages[key]?.length > 0 && (
+                          <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                            {pendingImages[key].map((img, idx) => (
+                              <div key={idx} style={{ position: 'relative' }}>
+                                <img src={img} alt="" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `2px dashed ${col}55`, opacity: 0.7 }} onClick={() => setPreviewImage(img)} />
+                                <span onClick={() => removePendingImage(key, idx)}
+                                  style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', color: 'white', borderRadius: '99px', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: '800' }}>✕</span>
+                                <div style={{ position: 'absolute', bottom: '2px', left: '2px', fontSize: '8px', background: '#f59e0b', color: 'white', padding: '1px 5px', borderRadius: '4px', fontWeight: '700' }}>ยังไม่ Save</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Saved images grid */}
+                        {noteImages[key]?.length > 0 && (
+                          <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                            {(Array.isArray(noteImages[key]) ? noteImages[key] : [noteImages[key]]).map((img, idx) => (
+                              <div key={idx} style={{ position: 'relative', cursor: 'pointer' }}>
+                                <img src={img} alt="" onClick={() => setPreviewImage(img)}
+                                  style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `1.5px solid ${col}33` }} />
+                                <span onClick={(e) => { e.stopPropagation(); removeNoteImage(key, idx) }}
+                                  style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', color: 'white', borderRadius: '99px', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: '800' }}>✕</span>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     )}

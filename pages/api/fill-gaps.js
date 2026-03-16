@@ -56,7 +56,11 @@ If no gaps exist, return: {"gaps": []}`
         )
 
         const data = await response.json()
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        let text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+        // Strip markdown code blocks (Gemini 2.5 may wrap in ```json)
+        text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+
         const jsonMatch = text.match(/\{[\s\S]*\}/)
         if (!jsonMatch) throw new Error('Invalid AI response')
 
