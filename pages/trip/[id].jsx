@@ -19,6 +19,7 @@ export default function TripPage() {
   const [trip, setTrip] = useState(null)
   const [step, setStep] = useState('loading')
   const [lang, setLang] = useState('th')
+  const [plansByLang, setPlansByLang] = useState({})
   const [isOwner, setIsOwner] = useState(false)
   const [isGuest, setIsGuest] = useState(false)
 
@@ -144,6 +145,7 @@ export default function TripPage() {
     setNotes(t.notes || '')
     if (t.plan_json) {
       setPlan(t.plan_json); setStep('plan'); setShowTimeline(true)
+      setPlansByLang(prev => ({ ...prev, th: t.plan_json }))
       if (t.destination) {
         fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination: t.destination }) })
           .then(r => r.json()).then(d => setPlanWeather(d)).catch(() => { })
@@ -297,6 +299,7 @@ export default function TripPage() {
   }
 
   const doGenerate = async (langOverride) => {
+    const useLang = langOverride || lang
     setConfirmGenerate(false)
     if (provider !== 'gemini' && !apiKey) { setShowSettings(true); return }
     setStep('generating'); setError('')
@@ -304,11 +307,12 @@ export default function TripPage() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: provider === 'gemini' ? null : apiKey, provider, destination, dates, notes, lang: langOverride || lang }),
+        body: JSON.stringify({ apiKey: provider === 'gemini' ? null : apiKey, provider, destination, dates, notes, lang: useLang }),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setPlan(data); setActiveDay(0); setChecked({}); setNoteMap({})
+      setPlansByLang(prev => ({ ...prev, [useLang]: data }))
       localStorage.removeItem(`checked-${id}`)
       localStorage.removeItem(`notes-${id}`)
       await fetch(`/api/trips/${id}`, {
@@ -973,7 +977,17 @@ export default function TripPage() {
               </button>
               <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', overflow: 'hidden' }}>
                 {['th', 'en', 'jp'].map(l => (
-                  <button key={l} onClick={() => { if (l !== lang) { setLang(l); setTimeout(() => doGenerate(l), 100) } }}
+                  <button key={l} onClick={() => {
+                    if (l === lang) return
+                    setLang(l)
+                    if (plansByLang[l]) {
+                      // ใช้ plan จาก cache
+                      setPlan(plansByLang[l]); setActiveDay(0)
+                    } else {
+                      // ยังไม่เคย generate ภาษานี้ → generate ใหม่
+                      setTimeout(() => doGenerate(l), 100)
+                    }
+                  }}
                     style={{ background: lang === l ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: lang === l ? '800' : '500', fontFamily: 'inherit', borderRight: l !== 'jp' ? '1px solid rgba(255,255,255,0.15)' : 'none' }}>
                     {l === 'th' ? '🇹🇭' : l === 'en' ? '🇬🇧' : '🇯🇵'}
                   </button>
@@ -1032,11 +1046,11 @@ export default function TripPage() {
                   <div style={{ fontSize: '18px', fontWeight: '800' }}>{day.emoji || '📍'} {day.title}</div>
                   {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
                 </div>
-                {planWeather?.forecast?.[activeDay] && (
+                {planWeather?.weather?.[activeDay] && (
                   <div style={{ background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '6px 10px', textAlign: 'center', minWidth: '70px' }}>
-                    <div style={{ fontSize: '20px' }}>{planWeather.forecast[activeDay].icon}</div>
-                    <div style={{ fontSize: '11px', fontWeight: '700' }}>{planWeather.forecast[activeDay].tempMax}°</div>
-                    <div style={{ fontSize: '9px', opacity: 0.8 }}>💧{planWeather.forecast[activeDay].rain}%</div>
+                    <div style={{ fontSize: '20px' }}>{planWeather.weather[activeDay].icon}</div>
+                    <div style={{ fontSize: '11px', fontWeight: '700' }}>{planWeather.weather[activeDay].tempMax}°</div>
+                    <div style={{ fontSize: '9px', opacity: 0.8 }}>💧{planWeather.weather[activeDay].rainChance}%</div>
                   </div>
                 )}
               </div>
