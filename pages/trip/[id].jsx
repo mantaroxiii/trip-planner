@@ -1108,7 +1108,7 @@ export default function TripPage() {
                         </div>
                       </div>
                     ) : (
-                      <div onClick={() => toggleCheck(key)} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '11px', cursor: 'pointer' }}>
+                      <div onClick={() => { if (!isGuest) toggleCheck(key) }} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '11px', cursor: isGuest ? 'default' : 'pointer' }}>
                         <div style={{ fontSize: '11px', color: '#38BDF8', fontFamily: 'monospace', width: '36px', flexShrink: 0, paddingTop: '3px', fontWeight: '700' }}>{ev.time}</div>
                         <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: isDone ? '#d1fae5' : light, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0, transition: 'all 0.2s' }}>
                           {isDone ? '✅' : ev.icon}
@@ -1127,8 +1127,10 @@ export default function TripPage() {
                                 style={{ fontSize: '15px', opacity: 0.7 }}>✏️</button>
                             </>
                           )}
-                          <button className="icon-btn" onClick={e => { e.stopPropagation(); setShowNote(p => ({ ...p, [key]: !showNote[key] })) }}
-                            style={{ fontSize: '15px', opacity: noteMap[key] ? 1 : 0.4 }} title="เพิ่ม note">📝</button>
+                          {!isGuest && (
+                            <button className="icon-btn" onClick={e => { e.stopPropagation(); setShowNote(p => ({ ...p, [key]: !showNote[key] })) }}
+                              style={{ fontSize: '15px', opacity: noteMap[key] ? 1 : 0.4 }} title="เพิ่ม note">📝</button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1228,7 +1230,7 @@ export default function TripPage() {
             </div>
           )}
           <div style={{ fontSize: '11px', color: '#38BDF8', textAlign: 'center', marginTop: '10px' }}>
-            {isOwner ? 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อแก้ไข · กด ✨ เพื่อให้ AI Suggest · กด 🔗 เพื่อแชร์' : 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด 📝 เพื่อเพิ่ม note'}
+            {isOwner ? 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อแก้ไข · กด ✨ เพื่อให้ AI Suggest · กด 🔗 เพื่อแชร์' : isGuest ? '👁️ ดูอย่างเดียว · สมัครสมาชิกเพื่อแก้ไข' : 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด 📝 เพื่อเพิ่ม note'}
           </div>
         </div>
       </div>
