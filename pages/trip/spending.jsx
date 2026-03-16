@@ -15,7 +15,8 @@ export default function SpendingReport() {
     const [plan, setPlan] = useState(null)
     const [activityLog, setActivityLog] = useState([])
     const [selectedPersons, setSelectedPersons] = useState([]) // empty = all
-    const [activeTab, setActiveTab] = useState('overview') // overview, people, daily, log
+    const [selectedCategories, setSelectedCategories] = useState([]) // empty = all
+    const [activeTab, setActiveTab] = useState('overview') // overview, people, daily, category, log
     const [revealStep, setRevealStep] = useState(0)
 
     useEffect(() => {
@@ -35,22 +36,46 @@ export default function SpendingReport() {
         return () => clearInterval(timer)
     }, [router.isReady, id])
 
-    // All expense entries flattened
+    // All expense entries flattened (enriched with event type)
     const allEntries = useMemo(() => {
         const entries = []
         Object.entries(expenses).forEach(([key, arr]) => {
             if (!Array.isArray(arr)) return
             const [dayIdx, eventIdx] = key.split('-').map(Number)
-            arr.forEach(e => entries.push({ ...e, dayIdx, eventIdx, key }))
+            const event = plan?.days?.[dayIdx]?.events?.[eventIdx]
+            const eventType = event?.type || 'อื่นๆ'
+            const eventTitle = event?.title || `Activity ${eventIdx + 1}`
+            arr.forEach(e => entries.push({ ...e, dayIdx, eventIdx, key, eventType, eventTitle }))
         })
         return entries
-    }, [expenses])
+    }, [expenses, plan])
 
-    // Filtered entries
+    // Filtered entries (person + category)
     const filteredEntries = useMemo(() => {
-        if (selectedPersons.length === 0) return allEntries
-        return allEntries.filter(e => selectedPersons.includes(e.userEmail || e.userName))
-    }, [allEntries, selectedPersons])
+        return allEntries.filter(e => {
+            const personOk = selectedPersons.length === 0 || selectedPersons.includes(e.userEmail || e.userName)
+            const catOk = selectedCategories.length === 0 || selectedCategories.includes(e.eventType)
+            return personOk && catOk
+        })
+    }, [allEntries, selectedPersons, selectedCategories])
+
+    // Unique categories
+    const categories = useMemo(() => {
+        const map = {}
+        allEntries.forEach(e => {
+            if (!map[e.eventType]) map[e.eventType] = { name: e.eventType, total: 0, count: 0 }
+            map[e.eventType].total += e.amount
+            map[e.eventType].count++
+        })
+        return Object.values(map).sort((a, b) => b.total - a.total)
+    }, [allEntries])
+
+    // By category chart data
+    const byCategoryData = useMemo(() => {
+        const map = {}
+        filteredEntries.forEach(e => { map[e.eventType] = (map[e.eventType] || 0) + e.amount })
+        return Object.entries(map).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value: Math.round(value) }))
+    }, [filteredEntries])
 
     // Unique persons
     const persons = useMemo(() => {
@@ -102,6 +127,11 @@ export default function SpendingReport() {
     const togglePerson = (personId) => {
         setSelectedPersons(prev =>
             prev.includes(personId) ? prev.filter(p => p !== personId) : [...prev, personId]
+        )
+    }
+    const toggleCategory = (cat) => {
+        setSelectedCategories(prev =>
+            prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
         )
     }
 
@@ -172,13 +202,13 @@ export default function SpendingReport() {
 
                 <div style={{ maxWidth: '600px', margin: '0 auto', padding: '16px' }}>
                     {/* Tabs */}
-                    <div style={{ display: 'flex', gap: '6px', marginBottom: '20px', overflowX: 'auto', ...(revealStep >= 1 ? {} : { opacity: 0 }) }}
-                        className={revealStep >= 1 ? 'reveal' : ''}>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '20px', overflowX: 'auto', ...(revealStep >= 1 ? { animation: 'fadeInUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards' } : { opacity: 0 }) }}>
                         {[
                             { id: 'overview', icon: '📊', label: 'Overview' },
+                            { id: 'category', icon: '🏷️', label: 'ประเภท' },
                             { id: 'people', icon: '👥', label: 'รายคน' },
                             { id: 'daily', icon: '📅', label: 'รายวัน' },
-                            { id: 'log', icon: '📋', label: 'Activity Log' },
+                            { id: 'log', icon: '📋', label: 'Log' },
                         ].map(t => (
                             <button key={t.id} className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
                                 onClick={() => setActiveTab(t.id)}>
@@ -276,7 +306,111 @@ export default function SpendingReport() {
                                             </ResponsiveContainer>
                                         </div>
                                     )}
+                                    {/* Pie Chart - By Category */}
+                                    {byCategoryData.length > 0 && (
+                                        <div className="glass-card" style={{ padding: '16px', marginTop: '16px', ...(revealStep >= 6 ? { animation: 'fadeInUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards' } : { opacity: 0 }) }}>
+                                            <div style={{ fontSize: '13px', fontWeight: '700', color: 'rgba(255,255,255,0.6)', marginBottom: '12px' }}>🏷️ ค่าใช้จ่ายตามประเภท</div>
+                                            <ResponsiveContainer width="100%" height={250}>
+                                                <PieChart>
+                                                    <Pie data={byCategoryData} cx="50%" cy="50%" innerRadius={50} outerRadius={100}
+                                                        paddingAngle={3} dataKey="value" labelLine={false} label={renderCustomLabel}
+                                                        animationBegin={0} animationDuration={1200} animationEasing="ease-out">
+                                                        {byCategoryData.map((_, i) => <Cell key={i} fill={COLORS[(i + 3) % COLORS.length]} />)}
+                                                    </Pie>
+                                                    <Tooltip content={<CustomTooltip />} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    )}
                                 </>
+                            )}
+
+                            {/* Category Tab */}
+                            {activeTab === 'category' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {/* Category Filter */}
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                        <button className="person-chip" onClick={() => setSelectedCategories([])}
+                                            style={{ background: selectedCategories.length === 0 ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)', borderColor: selectedCategories.length === 0 ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.1)', color: selectedCategories.length === 0 ? '#A78BFA' : 'rgba(255,255,255,0.5)' }}>
+                                            ทุกประเภท
+                                        </button>
+                                        {categories.map((c, i) => (
+                                            <button key={c.name} className="person-chip" onClick={() => toggleCategory(c.name)}
+                                                style={{ background: selectedCategories.includes(c.name) ? `${COLORS[(i + 3) % COLORS.length]}22` : 'rgba(255,255,255,0.04)', borderColor: selectedCategories.includes(c.name) ? `${COLORS[(i + 3) % COLORS.length]}66` : 'rgba(255,255,255,0.1)', color: selectedCategories.includes(c.name) ? COLORS[(i + 3) % COLORS.length] : 'rgba(255,255,255,0.5)' }}>
+                                                {c.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {/* Person sub-filter */}
+                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                        <button className="person-chip" onClick={() => setSelectedPersons([])}
+                                            style={{ background: selectedPersons.length === 0 ? 'rgba(14,165,233,0.2)' : 'rgba(255,255,255,0.04)', borderColor: selectedPersons.length === 0 ? 'rgba(14,165,233,0.4)' : 'rgba(255,255,255,0.1)', color: selectedPersons.length === 0 ? '#38BDF8' : 'rgba(255,255,255,0.5)' }}>
+                                            ทุกคน
+                                        </button>
+                                        {persons.map((p, i) => (
+                                            <button key={p.id} className="person-chip" onClick={() => togglePerson(p.id)}
+                                                style={{ background: selectedPersons.includes(p.id) ? `${COLORS[i % COLORS.length]}22` : 'rgba(255,255,255,0.04)', borderColor: selectedPersons.includes(p.id) ? `${COLORS[i % COLORS.length]}66` : 'rgba(255,255,255,0.1)', color: selectedPersons.includes(p.id) ? COLORS[i % COLORS.length] : 'rgba(255,255,255,0.5)' }}>
+                                                {p.name?.split(' ')[0]}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Category Pie */}
+                                    {byCategoryData.length > 0 && (
+                                        <div className="glass-card" style={{ padding: '16px', marginBottom: '10px' }}>
+                                            <ResponsiveContainer width="100%" height={220}>
+                                                <PieChart>
+                                                    <Pie data={byCategoryData} cx="50%" cy="50%" innerRadius={45} outerRadius={90}
+                                                        paddingAngle={3} dataKey="value" labelLine={false} label={renderCustomLabel}
+                                                        animationBegin={0} animationDuration={1200} animationEasing="ease-out">
+                                                        {byCategoryData.map((_, i) => <Cell key={i} fill={COLORS[(i + 3) % COLORS.length]} />)}
+                                                    </Pie>
+                                                    <Tooltip content={<CustomTooltip />} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    )}
+
+                                    {/* Category Cards */}
+                                    {categories.filter(c => selectedCategories.length === 0 || selectedCategories.includes(c.name)).map((c, i) => {
+                                        const catEntries = filteredEntries.filter(e => e.eventType === c.name)
+                                        const catByCurrency = {}
+                                        catEntries.forEach(e => { catByCurrency[e.currency] = (catByCurrency[e.currency] || 0) + e.amount })
+
+                                        return (
+                                            <div key={c.name} className="glass-card" style={{ padding: '14px', animation: `slideInLeft 0.4s ${i * 0.1}s cubic-bezier(0.16,1,0.3,1) forwards`, opacity: 0 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                                                    <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: `linear-gradient(135deg, ${COLORS[(i + 3) % COLORS.length]}, ${COLORS[(i + 4) % COLORS.length]})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: '800', flexShrink: 0 }}>
+                                                        🏷️
+                                                    </div>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ fontSize: '14px', fontWeight: '700' }}>{c.name}</div>
+                                                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)' }}>{catEntries.length} รายการ</div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                        {Object.entries(catByCurrency).map(([cur, amt]) => (
+                                                            <div key={cur} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '5px 10px', textAlign: 'right' }}>
+                                                                <div style={{ fontSize: '14px', fontWeight: '800' }}>{Math.round(amt).toLocaleString()}</div>
+                                                                <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)' }}>{cur}</div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                {/* Entries */}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    {catEntries.map((e, j) => (
+                                                        <div key={j} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.4)', padding: '4px 6px', borderRadius: '6px', background: 'rgba(255,255,255,0.02)' }}>
+                                                            <div>
+                                                                <span style={{ opacity: 0.5 }}>{e.userName?.split(' ')[0]}</span> · วัน{e.dayIdx + 1} · {e.eventTitle}
+                                                            </div>
+                                                            <span style={{ fontWeight: '700', color: 'rgba(255,255,255,0.6)' }}>{e.amount.toLocaleString()} {e.currency}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
                             )}
 
                             {/* People Tab */}
