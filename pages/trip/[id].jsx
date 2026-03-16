@@ -27,7 +27,12 @@ const getWeatherForDay = (weatherData, dayDate) => {
   if (!weatherData?.weather || !dayDate) return null
   const d = parseTripDate(dayDate)
   if (!d) return null
-  return weatherData.weather.find(w => w.date === d.toISOString().split('T')[0])
+  // Use local date to avoid UTC offset shifting the day
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const localDate = `${yyyy}-${mm}-${dd}`
+  return weatherData.weather.find(w => w.date === localDate)
 }
 
 const PROVIDERS = [
@@ -769,7 +774,7 @@ export default function TripPage() {
                   {w && (
                     <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '12px', padding: '6px 10px', textAlign: 'center', flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)' }}>
                       <div style={{ fontSize: '20px' }}>{w.icon}</div>
-                      <div style={{ fontSize: '10px', color: 'white', fontWeight: '700' }}>{w.tempMax}°/{w.tempMin}°</div>
+                      <div style={{ fontSize: '10px', color: 'white', fontWeight: '700' }}>{w.tempMax}°C/{w.tempMin}°C</div>
                       {w.rainChance > 20 && <div style={{ fontSize: '9px', color: '#38BDF8' }}>💧{w.rainChance}%</div>}
                     </div>
                   )}
@@ -1049,16 +1054,31 @@ export default function TripPage() {
                   <div style={{ fontSize: '18px', fontWeight: '800' }}>{day.emoji || '📍'} {day.title}</div>
                   {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
                 </div>
-                {(() => {
-                  const w = getWeatherForDay(planWeather, day.date); return w ? (
-                    <div style={{ background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '6px 10px', textAlign: 'center', minWidth: '70px' }}>
-                      <div style={{ fontSize: '20px' }}>{w.icon}</div>
-                      <div style={{ fontSize: '11px', fontWeight: '700' }}>{w.tempMax}°/{w.tempMin}°</div>
-                      <div style={{ fontSize: '9px', opacity: 0.8 }}>💧{w.rainChance}%</div>
-                    </div>
-                  ) : null
-                })()}
               </div>
+              {/* ─── WEATHER BANNER ─── */}
+              {(() => {
+                const w = getWeatherForDay(planWeather, day.date); return w ? (
+                  <div style={{ marginTop: '12px', background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(12px)', borderRadius: '14px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '14px', border: '1px solid rgba(255,255,255,0.25)' }}>
+                    <div style={{ fontSize: '36px', lineHeight: 1, flexShrink: 0 }}>{w.icon}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '13px', fontWeight: '700', opacity: 0.9, marginBottom: '2px' }}>{w.desc}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                        <span style={{ fontSize: '22px', fontWeight: '800' }}>{w.tempMax}°C</span>
+                        <span style={{ fontSize: '14px', fontWeight: '600', opacity: 0.7 }}>/ {w.tempMin}°C</span>
+                      </div>
+                    </div>
+                    {w.rainChance > 0 && (
+                      <div style={{ textAlign: 'center', flexShrink: 0 }}>
+                        <div style={{ fontSize: '16px' }}>💧</div>
+                        <div style={{ fontSize: '13px', fontWeight: '700' }}>{w.rainChance}%</div>
+                        <div style={{ fontSize: '9px', opacity: 0.7 }}>โอกาสฝน</div>
+                      </div>
+                    )}
+                  </div>
+                ) : planWeather === null ? (
+                  <div style={{ marginTop: '10px', fontSize: '12px', opacity: 0.5, textAlign: 'center' }}>⏳ กำลังโหลดพยากรณ์อากาศ...</div>
+                ) : null
+              })()}
             </div>
             <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {day.events.map((ev, ei) => {
@@ -1173,13 +1193,13 @@ export default function TripPage() {
                 <button className="btn-ghost" style={{ flex: 1 }} onClick={() => setStep('draft')}>← แก้ Notes</button>
                 <button className="btn-primary" style={{ flex: 2 }} onClick={handleGenerate}>✨ Generate ใหม่</button>
               </div>
-              {/* Packing List - prominent card */}
-              <div onClick={!packingLoading ? generatePacking : undefined}
-                style={{ background: 'linear-gradient(135deg,#F59E0B,#F97316)', borderRadius: '14px', padding: '14px 16px', cursor: packingLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(249,115,22,0.3)', transition: 'transform 0.2s', opacity: packingLoading ? 0.7 : 1 }}>
-                <div style={{ fontSize: '28px' }}>{packingLoading ? '⏳' : '🧳'}</div>
+              {/* Packing List - navigate to dedicated page */}
+              <div onClick={() => router.push(`/trip/packing?id=${id}`)}
+                style={{ background: 'linear-gradient(135deg,#F59E0B,#F97316)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(249,115,22,0.3)', transition: 'transform 0.2s' }}>
+                <div style={{ fontSize: '28px' }}>🧳</div>
                 <div>
-                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>{packingLoading ? 'กำลังสร้าง Packing List...' : 'Packing List'}</div>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>AI สร้างรายการจัดกระเป๋าให้อัตโนมัติ</div>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Packing List</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>เลือกผู้เดินทาง → AI จัดกระเป๋าให้</div>
                 </div>
                 <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
               </div>

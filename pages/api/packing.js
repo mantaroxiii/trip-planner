@@ -6,33 +6,44 @@ export default async function handler(req, res) {
     const user = await getAuthUser(req)
     if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
-    const { destination, dates, plan } = req.body
+    const { destination, dates, plan, travelers } = req.body
     if (!plan) return res.status(400).json({ error: 'Missing plan' })
 
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not set' })
 
-    // สรุป activities จาก plan (เอาแค่สั้นๆ เพื่อไม่ให้ prompt ยาวเกินไป)
+    // สรุป activities จาก plan
     const activities = plan.days.flatMap(d =>
         d.events.map(e => `${e.type}: ${e.title}`)
     ).slice(0, 30).join(', ')
+
+    // Build travelers description
+    let travelersDesc = ''
+    if (travelers) {
+        const parts = []
+        if (travelers.men > 0) parts.push(`ผู้ชาย ${travelers.men} คน`)
+        if (travelers.women > 0) parts.push(`ผู้หญิง ${travelers.women} คน`)
+        if (travelers.kids > 0) parts.push(`เด็กโต ${travelers.kids} คน`)
+        if (travelers.toddlers > 0) parts.push(`เด็กเล็ก ${travelers.toddlers} คน`)
+        travelersDesc = parts.join(', ')
+    }
 
     const prompt = `You are a travel packing expert.
 
 Trip: ${destination || 'Unknown'}
 Dates: ${dates || 'Unknown'}
+Travelers: ${travelersDesc || '1 person'}
 Activities: ${activities}
 
-Generate a packing list organized by categories. Consider the activities and destination.
-Each category should have 3-8 items. Keep item names SHORT (under 30 characters).
+Generate a comprehensive packing list organized by categories.
+Consider the travelers (gender, age), activities, destination, and weather.
+${travelers?.women > 0 ? 'Include women-specific items (skincare, makeup, sanitary products etc.).' : ''}
+${travelers?.kids > 0 || travelers?.toddlers > 0 ? 'Include kid-specific items (toys, snacks, diapers for toddlers, etc.).' : ''}
+Each category should have 3-10 items. Keep item names SHORT (under 30 chars).
+For items that need quantity, add quantity in parentheses like "เสื้อยืด (${(travelers?.men || 0) + (travelers?.women || 0) + (travelers?.kids || 0)} ตัว)".
 Return ONLY valid JSON:
 {"categories": [
-  {"icon": "👕", "name": "เสื้อผ้า", "items": ["item1", "item2"]},
-  {"icon": "🧴", "name": "ของใช้ส่วนตัว", "items": ["item1", "item2"]},
-  {"icon": "💊", "name": "ยาและสุขภาพ", "items": ["item1", "item2"]},
-  {"icon": "📱", "name": "อุปกรณ์อิเล็กทรอนิกส์", "items": ["item1", "item2"]},
-  {"icon": "📄", "name": "เอกสาร", "items": ["item1", "item2"]},
-  {"icon": "🎒", "name": "อื่นๆ", "items": ["item1", "item2"]}
+  {"icon": "emoji", "name": "category name", "items": ["item1", "item2"]}
 ]}`
 
     try {
@@ -64,7 +75,6 @@ Return ONLY valid JSON:
             throw new Error('AI returned empty response')
         }
 
-        // Concatenate all text parts
         let text = candidate.content.parts.map(p => p.text || '').join('')
         text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
