@@ -254,12 +254,14 @@ export default function TripPage() {
     map[key] = [...(map[key] || []), entry]
     saveExpenses(map)
     setAddingExpense(null); setExpenseAmount('')
+    logActivity('💰', 'เพิ่มค่าใช้จ่าย', `${amt} ${entry.currency} วัน${dayIdx + 1}`)
   }
   const removeExpenseEntry = (key, idx) => {
     const map = { ...expenses }
     map[key] = (map[key] || []).filter((_, i) => i !== idx)
     if (map[key].length === 0) delete map[key]
     saveExpenses(map)
+    logActivity('❌', 'ลบค่าใช้จ่าย', `รายการที่ ${idx + 1}`)
   }
   const getDayTotal = (dayIdx) => {
     if (!plan?.days?.[dayIdx]) return {}
@@ -274,6 +276,28 @@ export default function TripPage() {
     Object.values(expenses).flat().forEach(e => { totals[e.currency] = (totals[e.currency] || 0) + e.amount })
     return totals
   }
+
+  // Activity log
+  const logActivity = (icon, action, detail) => {
+    if (!id) return
+    const entry = {
+      icon, action, detail,
+      userName: session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'Guest',
+      userEmail: session?.user?.email || '',
+      ts: Date.now()
+    }
+    const saved = localStorage.getItem(`activityLog-${id}`)
+    const log = saved ? JSON.parse(saved) : []
+    log.push(entry)
+    // Keep last 200 entries
+    if (log.length > 200) log.splice(0, log.length - 200)
+    localStorage.setItem(`activityLog-${id}`, JSON.stringify(log))
+  }
+
+  // Save plan to localStorage for spending report
+  useEffect(() => {
+    if (plan && id) localStorage.setItem(`plan-${id}`, JSON.stringify(plan))
+  }, [plan, id])
 
   // 3. Realtime
   useEffect(() => {
@@ -583,12 +607,14 @@ export default function TripPage() {
     const next = { ...checked, [key]: !checked[key] }
     setChecked(next)
     localStorage.setItem(`checked-${id}`, JSON.stringify(next))
+    logActivity(next[key] ? '✅' : '⬜', next[key] ? 'เสร็จกิจกรรม' : 'ยกเลิกเสร็จ', key)
   }
 
   const saveNote = (key, val) => {
     const next = { ...noteMap, [key]: val }
     setNoteMap(next)
     localStorage.setItem(`notes-${id}`, JSON.stringify(next))
+    if (val) logActivity('📝', 'เพิ่ม/แก้ไข note', key)
   }
 
   const globalStyle = `
@@ -1512,6 +1538,16 @@ export default function TripPage() {
                 <div>
                   <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Packing List</div>
                   <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>เลือกผู้เดินทาง → AI จัดกระเป๋าให้</div>
+                </div>
+                <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
+              </div>
+              {/* Spending Report */}
+              <div onClick={() => router.push(`/trip/spending?id=${id}`)}
+                style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(14,165,233,0.3)', transition: 'transform 0.2s' }}>
+                <div style={{ fontSize: '28px' }}>📊</div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Spending Report</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสรุปค่าใช้จ่าย · กราฟ · Activity Log</div>
                 </div>
                 <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
               </div>
