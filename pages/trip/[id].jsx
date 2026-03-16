@@ -10,9 +10,13 @@ const parseTripDate = (dateStr) => {
   if (!dateStr) return null
   const now = new Date()
   const thaiMonths = { 'ม.ค.': 0, 'ก.พ.': 1, 'มี.ค.': 2, 'เม.ย.': 3, 'พ.ค.': 4, 'มิ.ย.': 5, 'ก.ค.': 6, 'ส.ค.': 7, 'ก.ย.': 8, 'ต.ค.': 9, 'พ.ย.': 10, 'ธ.ค.': 11 }
+  const thaiMonthsFull = { 'มกราคม': 0, 'กุมภาพันธ์': 1, 'มีนาคม': 2, 'เมษายน': 3, 'พฤษภาคม': 4, 'มิถุนายน': 5, 'กรกฎาคม': 6, 'สิงหาคม': 7, 'กันยายน': 8, 'ตุลาคม': 9, 'พฤศจิกายน': 10, 'ธันวาคม': 11 }
   const enMonths = { 'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5, 'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11 }
   const iso = dateStr.match(/(\d{4})-(\d{2})-(\d{2})/)
   if (iso) return new Date(iso[1], iso[2] - 1, iso[3])
+  for (const [th, mm] of Object.entries(thaiMonthsFull)) {
+    if (dateStr.includes(th)) { const d = dateStr.match(/(\d{1,2})/); if (d) return new Date(now.getFullYear(), mm, parseInt(d[1])) }
+  }
   for (const [th, mm] of Object.entries(thaiMonths)) {
     if (dateStr.includes(th)) { const d = dateStr.match(/(\d{1,2})/); if (d) return new Date(now.getFullYear(), mm, parseInt(d[1])) }
   }
@@ -1075,7 +1079,7 @@ export default function TripPage() {
                       </div>
                     )}
                   </div>
-                ) : planWeather === null ? (
+                ) : !planWeather ? (
                   <div style={{ marginTop: '10px', fontSize: '12px', opacity: 0.5, textAlign: 'center' }}>⏳ กำลังโหลดพยากรณ์อากาศ...</div>
                 ) : null
               })()}

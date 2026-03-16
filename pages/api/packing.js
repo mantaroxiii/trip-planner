@@ -56,7 +56,7 @@ Return ONLY valid JSON:
                     contents: [{ parts: [{ text: prompt }] }],
                     generationConfig: {
                         temperature: 0.4,
-                        maxOutputTokens: 4096,
+                        maxOutputTokens: 8192,
                         responseMimeType: 'application/json',
                     },
                 }),
@@ -80,7 +80,38 @@ Return ONLY valid JSON:
 
         if (!text) throw new Error('AI returned empty text')
 
-        const parsed = JSON.parse(text)
+        // Attempt to repair truncated JSON
+        let parsed
+        try {
+            parsed = JSON.parse(text)
+        } catch (parseErr) {
+            console.warn('JSON parse failed, attempting repair:', parseErr.message)
+            let repaired = text
+            // Close unclosed strings
+            const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length
+            if (quoteCount % 2 !== 0) repaired += '"'
+            // Remove trailing comma
+            repaired = repaired.replace(/,\s*$/, '')
+            // Close open arrays and objects
+            const opens = (repaired.match(/[\[{]/g) || []).length
+            const closes = (repaired.match(/[\]}]/g) || []).length
+            for (let i = 0; i < opens - closes; i++) {
+                // Check what needs closing
+                const lastOpen = Math.max(repaired.lastIndexOf('['), repaired.lastIndexOf('{'))
+                const lastClose = Math.max(repaired.lastIndexOf(']'), repaired.lastIndexOf('}'))
+                if (lastOpen > lastClose) {
+                    repaired += repaired[lastOpen] === '[' ? ']' : '}'
+                } else {
+                    repaired += ']}'
+                }
+            }
+            try {
+                parsed = JSON.parse(repaired)
+            } catch (e2) {
+                throw new Error(`JSON repair failed: ${parseErr.message}`)
+            }
+        }
+
         if (!parsed.categories || !Array.isArray(parsed.categories)) {
             throw new Error('Invalid response structure')
         }

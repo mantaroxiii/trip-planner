@@ -8,12 +8,21 @@ export default async function handler(req, res) {
     if (!destination) return res.status(400).json({ error: 'Missing destination' })
 
     try {
-        // 1. Geocode destination
-        const geoRes = await fetch(
-            `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(destination)}&count=1&language=en`
-        )
-        const geoData = await geoRes.json()
-        const loc = geoData.results?.[0]
+        // 1. Geocode destination — try multiple strategies
+        let loc = null
+        const queries = [destination]
+        // Try first word (e.g. "คิวชู ญี่ปุ่น" → "คิวชู")
+        if (destination.includes(' ')) queries.push(destination.split(' ')[0])
+        // Try each word separately
+        destination.split(/[\s,·]+/).forEach(w => { if (w.length > 1 && !queries.includes(w)) queries.push(w) })
+
+        for (const q of queries) {
+            const geoRes = await fetch(
+                `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en`
+            )
+            const geoData = await geoRes.json()
+            if (geoData.results?.[0]) { loc = geoData.results[0]; break }
+        }
         if (!loc) return res.json({ weather: [], city: destination, error: 'Location not found' })
 
         const { latitude, longitude, name, country } = loc
