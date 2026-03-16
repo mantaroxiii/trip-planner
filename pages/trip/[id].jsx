@@ -944,14 +944,20 @@ export default function TripPage() {
       {showSettings && <SettingsModal />}
       {confirmGenerate && <ConfirmModal />}
 
-      {/* Guest Banner */}
+      {/* Role Banner */}
       {!isOwner && (
-        <div style={{ background: 'linear-gradient(135deg,#F97316,#FB923C)', color: 'white', padding: '10px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>
-          {isGuest ? '👁️ คุณกำลังดูในฐานะ Guest · ' : '👥 คุณเป็น Viewer · '}
-          <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => router.push(`/login?next=/trip/${id}`)}>
-            {isGuest ? 'สมัครสมาชิกเพื่อแก้ไขร่วมกัน →' : 'Login เพื่อแก้ไข →'}
-          </span>
-        </div>
+        isGuest ? (
+          <div style={{ background: 'linear-gradient(135deg,#F97316,#FB923C)', color: 'white', padding: '10px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>
+            👁️ คุณกำลังดูในฐานะ Guest ·
+            <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => router.push(`/login?next=/trip/${id}`)}>
+              สมัครสมาชิกเพื่อแก้ไขร่วมกัน →
+            </span>
+          </div>
+        ) : isMember ? (
+          <div style={{ background: 'linear-gradient(135deg,#10B981,#34D399)', color: 'white', padding: '8px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600' }}>
+            👥 คุณร่วมทริปนี้แล้ว · สามารถเพิ่ม note, ติ๊กกิจกรรม, ใส่งบประมาณได้
+          </div>
+        ) : null
       )}
 
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '16px' }}>
@@ -1053,14 +1059,20 @@ export default function TripPage() {
           </div>
         )}
 
-        {/* Guest Banner */}
+        {/* Role Banner */}
         {!isOwner && (
-          <div style={{ background: 'linear-gradient(135deg,#F97316,#FB923C)', color: 'white', padding: '10px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>
-            {isGuest ? '👁️ คุณกำลังดูในฐานะ Guest · ' : '👥 คุณเป็น Viewer · '}
-            <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => router.push(`/login?next=/trip/${id}`)}>
-              {isGuest ? 'สมัครสมาชิกเพื่อแก้ไขร่วมกัน →' : 'Login เพื่อแก้ไข →'}
-            </span>
-          </div>
+          isGuest ? (
+            <div style={{ background: 'linear-gradient(135deg,#F97316,#FB923C)', color: 'white', padding: '10px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>
+              👁️ คุณกำลังดูในฐานะ Guest ·
+              <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => router.push(`/login?next=/trip/${id}`)}>
+                สมัครสมาชิกเพื่อแก้ไขร่วมกัน →
+              </span>
+            </div>
+          ) : isMember ? (
+            <div style={{ background: 'linear-gradient(135deg,#10B981,#34D399)', color: 'white', padding: '8px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600' }}>
+              👥 คุณร่วมทริปนี้แล้ว · สามารถเพิ่ม note, ติ๊กกิจกรรม, ใส่งบประมาณได้
+            </div>
+          ) : null
         )}
 
         {/* Header */}
@@ -1268,7 +1280,7 @@ export default function TripPage() {
                                 </div>
                               ) : (
                                 <span className="budget-tag" onClick={e => { e.stopPropagation(); setEditingBudget(key); setBudgetInput(budgetMap[key]?.toString() || '') }}>
-                                  💰 {budgetMap[key] ? `${budgetMap[key].toLocaleString()} ${foreignCurrency}` : 'ใส่งบ'}
+                                  💰 {budgetMap[key] ? `${budgetMap[key].toLocaleString()} ${foreignCurrency}` : 'ค่าใช้จ่าย'}
                                 </span>
                               )
                             )}

@@ -12,14 +12,16 @@ export default function Login() {
   const [error, setError] = useState('')
   const [msg, setMsg] = useState('')
 
-  const next = router.query.next || '/trips'
+  const next = router.isReady ? (router.query.next || '/trips') : '/trips'
   const isSharedLink = router.query.next?.startsWith('/trip/')
 
   useEffect(() => {
+    if (!router.isReady) return
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace(next)
+      // Don't redirect anonymous users — they're here to upgrade to a real account
+      if (session && !session.user.is_anonymous) router.replace(next)
     })
-  }, [])
+  }, [router.isReady])
 
   const handleEmail = async (e) => {
     e.preventDefault()
