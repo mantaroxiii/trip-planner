@@ -87,7 +87,6 @@ async function callOpenAI(apiKey, destination, dates, notes) {
 }
 
 async function callGemini(apiKey, destination, dates, notes) {
-  // Use provided key or fall back to shared server key
   const key = apiKey || process.env.GEMINI_API_KEY
   if (!key) throw new Error('Gemini API key not configured. กรุณาติดต่อผู้ดูแลระบบ')
 
@@ -111,7 +110,6 @@ async function callGemini(apiKey, destination, dates, notes) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  // Require auth
   const user = await getAuthUser(req)
   if (!user) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบก่อน' })
 
