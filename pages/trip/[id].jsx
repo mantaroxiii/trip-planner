@@ -125,6 +125,46 @@ export default function TripPage() {
   const saveTimer = useRef(null)
   const prov = PROVIDERS.find(p => p.id === provider) || PROVIDERS[0]
 
+  // Exchange rate converter
+  const [showConverter, setShowConverter] = useState(false)
+  const [foreignCurrency, setForeignCurrency] = useState('JPY')
+  const [exchangeRate, setExchangeRate] = useState(null)
+  const [convertAmount, setConvertAmount] = useState('')
+  const [convertDirection, setConvertDirection] = useState('foreign') // 'foreign' = foreign→THB, 'thb' = THB→foreign
+
+  const CURRENCY_MAP = {
+    'japan': 'JPY', 'ญี่ปุ่น': 'JPY', 'tokyo': 'JPY', 'osaka': 'JPY', 'kyoto': 'JPY', 'kyushu': 'JPY', 'hokkaido': 'JPY', 'คิวชู': 'JPY', 'โตเกียว': 'JPY', 'โอซาก้า': 'JPY',
+    'korea': 'KRW', 'เกาหลี': 'KRW', 'seoul': 'KRW', 'busan': 'KRW', 'โซล': 'KRW',
+    'china': 'CNY', 'จีน': 'CNY', 'beijing': 'CNY', 'shanghai': 'CNY',
+    'taiwan': 'TWD', 'ไต้หวัน': 'TWD', 'taipei': 'TWD',
+    'hong kong': 'HKD', 'ฮ่องกง': 'HKD',
+    'singapore': 'SGD', 'สิงคโปร์': 'SGD',
+    'malaysia': 'MYR', 'มาเลเซีย': 'MYR', 'kuala lumpur': 'MYR',
+    'vietnam': 'VND', 'เวียดนาม': 'VND', 'hanoi': 'VND',
+    'laos': 'LAK', 'ลาว': 'LAK', 'cambodia': 'KHR', 'กัมพูชา': 'KHR',
+    'myanmar': 'MMK', 'พม่า': 'MMK',
+    'indonesia': 'IDR', 'อินโดนีเซีย': 'IDR', 'bali': 'IDR',
+    'philippines': 'PHP', 'ฟิลิปปินส์': 'PHP',
+    'india': 'INR', 'อินเดีย': 'INR',
+    'usa': 'USD', 'america': 'USD', 'อเมริกา': 'USD', 'new york': 'USD', 'hawaii': 'USD', 'ฮาวาย': 'USD',
+    'uk': 'GBP', 'england': 'GBP', 'london': 'GBP', 'อังกฤษ': 'GBP',
+    'europe': 'EUR', 'france': 'EUR', 'germany': 'EUR', 'italy': 'EUR', 'spain': 'EUR', 'ฝรั่งเศส': 'EUR', 'เยอรมัน': 'EUR', 'อิตาลี': 'EUR', 'paris': 'EUR',
+    'switzerland': 'CHF', 'สวิส': 'CHF',
+    'australia': 'AUD', 'ออสเตรเลีย': 'AUD', 'sydney': 'AUD',
+    'new zealand': 'NZD', 'นิวซีแลนด์': 'NZD',
+    'russia': 'RUB', 'รัสเซีย': 'RUB',
+    'turkey': 'TRY', 'ตุรกี': 'TRY',
+    'uae': 'AED', 'dubai': 'AED', 'ดูไบ': 'AED',
+    'maldives': 'USD', 'มัลดีฟส์': 'USD',
+  }
+  const CURRENCY_NAMES = {
+    JPY: '🇯🇵 เยน', KRW: '🇰🇷 วอน', CNY: '🇨🇳 หยวน', TWD: '🇹🇼 ดอลลาร์ไต้หวัน', HKD: '🇭🇰 HKD',
+    SGD: '🇸🇬 SGD', MYR: '🇲🇾 ริงกิต', VND: '🇻🇳 ดอง', LAK: '🇱🇦 กีบ', KHR: '🇰🇭 เรียล', MMK: '🇲🇲 จ๊าด',
+    IDR: '🇮🇩 รูเปียห์', PHP: '🇵🇭 เปโซ', INR: '🇮🇳 รูปี', USD: '🇺🇸 ดอลลาร์', GBP: '🇬🇧 ปอนด์',
+    EUR: '🇪🇺 ยูโร', CHF: '🇨🇭 ฟรังก์', AUD: '🇦🇺 AUD', NZD: '🇳🇿 NZD', RUB: '🇷🇺 รูเบิล',
+    TRY: '🇹🇷 ลีรา', AED: '🇦🇪 ดีร์แฮม',
+  }
+
   // 1. Auth check — allow anonymous viewing
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
@@ -139,6 +179,25 @@ export default function TripPage() {
       setStep(prev => prev === 'loading' ? 'loading' : prev)
     })
   }, [])
+
+  // Auto-detect currency from destination
+  useEffect(() => {
+    if (!destination && !plan?.tripTitle) return
+    const text = `${destination || ''} ${plan?.tripTitle || ''}`.toLowerCase()
+    for (const [keyword, currency] of Object.entries(CURRENCY_MAP)) {
+      if (text.includes(keyword)) { setForeignCurrency(currency); break }
+    }
+  }, [destination, plan?.tripTitle])
+
+  // Fetch exchange rate
+  useEffect(() => {
+    if (!foreignCurrency || foreignCurrency === 'THB') return
+    setExchangeRate(null)
+    fetch(`https://api.frankfurter.app/latest?from=${foreignCurrency}&to=THB`)
+      .then(r => r.json())
+      .then(d => { if (d.rates?.THB) setExchangeRate(d.rates.THB) })
+      .catch(() => { })
+  }, [foreignCurrency])
 
   // 2. Load trip
   useEffect(() => {
@@ -1009,6 +1068,10 @@ export default function TripPage() {
                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
                 🔗 แชร์
               </button>
+              <button onClick={() => setShowConverter(c => !c)}
+                style={{ background: showConverter ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', padding: '5px 12px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit' }}>
+                💱
+              </button>
               {isOwner && (
                 <>
                   <button onClick={() => { loadProposals(trip.id); setShowProposals(true) }}
@@ -1037,6 +1100,49 @@ export default function TripPage() {
           </div>
         </div>
 
+        {/* Currency Converter Panel */}
+        {showConverter && (
+          <div style={{ background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', padding: '14px 16px', borderBottom: '1px solid rgba(245,158,11,0.2)' }}>
+            <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E' }}>💱 แปลงสกุลเงิน</div>
+                <select value={foreignCurrency} onChange={e => setForeignCurrency(e.target.value)}
+                  style={{ border: '1.5px solid #FCD34D', borderRadius: '8px', padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#92400E', background: 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {Object.entries(CURRENCY_NAMES).map(([code, name]) => (
+                    <option key={code} value={code}>{name} ({code})</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '10px', fontWeight: '600', color: '#92400E', marginBottom: '4px', opacity: 0.7 }}>
+                    {convertDirection === 'foreign' ? foreignCurrency : '🇹🇭 THB'}
+                  </div>
+                  <input type="number" value={convertAmount} onChange={e => setConvertAmount(e.target.value)}
+                    placeholder="0" inputMode="decimal"
+                    style={{ width: '100%', border: '1.5px solid #FCD34D', borderRadius: '10px', padding: '10px 12px', fontSize: '18px', fontWeight: '700', color: '#92400E', background: 'white', outline: 'none', fontFamily: 'inherit' }} />
+                </div>
+                <button onClick={() => setConvertDirection(d => d === 'foreign' ? 'thb' : 'foreign')}
+                  style={{ background: '#F59E0B', border: 'none', borderRadius: '50%', width: '36px', height: '36px', color: 'white', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '14px' }}>⇄</button>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '10px', fontWeight: '600', color: '#92400E', marginBottom: '4px', opacity: 0.7 }}>
+                    {convertDirection === 'foreign' ? '🇹🇭 THB' : foreignCurrency}
+                  </div>
+                  <div style={{ border: '1.5px solid #FCD34D', borderRadius: '10px', padding: '10px 12px', fontSize: '18px', fontWeight: '700', color: '#92400E', background: 'rgba(255,255,255,0.6)', minHeight: '44px', display: 'flex', alignItems: 'center' }}>
+                    {exchangeRate && convertAmount ? (
+                      convertDirection === 'foreign'
+                        ? (parseFloat(convertAmount) * exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 2 })
+                        : (parseFloat(convertAmount) / exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 2 })
+                    ) : <span style={{ opacity: 0.3 }}>0</span>}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: '11px', color: '#B45309', marginTop: '8px', textAlign: 'center', opacity: 0.8 }}>
+                {exchangeRate ? `1 ${foreignCurrency} = ${exchangeRate.toLocaleString('th-TH', { maximumFractionDigits: 4 })} THB` : '⏳ กำลังโหลดอัตราแลกเปลี่ยน...'}
+              </div>
+            </div>
+          </div>
+        )}
         {/* Day tabs */}
         <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', overflowX: 'auto', background: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(14,165,233,0.1)' }}>
           {plan.days.map((d, i) => (
