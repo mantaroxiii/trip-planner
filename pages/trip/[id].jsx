@@ -190,8 +190,8 @@ export default function TripPage() {
     if (t.plan_json) {
       setPlan(t.plan_json); setStep('plan'); setShowTimeline(true)
       setPlansByLang(prev => ({ ...prev, th: t.plan_json }))
-      if (t.destination) {
-        fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination: t.destination }) })
+      if (t.destination || t.plan_json?.tripTitle) {
+        fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination: t.destination, planTitle: t.plan_json?.tripTitle }) })
           .then(r => r.json()).then(d => setPlanWeather(d)).catch(() => { })
       }
     }
@@ -366,8 +366,8 @@ export default function TripPage() {
       })
       setStep('plan'); setShowTimeline(true)
       // Fetch weather for plan view
-      if (destination) {
-        fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination }) })
+      if (destination || data.tripTitle) {
+        fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination, planTitle: data.tripTitle }) })
           .then(r => r.json()).then(d => setPlanWeather(d)).catch(() => { })
       }
     } catch (e) {

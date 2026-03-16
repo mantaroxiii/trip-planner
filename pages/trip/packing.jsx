@@ -27,20 +27,22 @@ export default function PackingPage() {
     }, [])
 
     useEffect(() => {
-        if (!session || !id) return
+        if (!session || !id || !router.isReady) return
         loadTrip()
         // Load saved packing data
         const saved = localStorage.getItem(`packing-${id}`)
         if (saved) {
             try {
                 const parsed = JSON.parse(saved)
-                setPackingData(parsed.data)
-                setChecked(parsed.checked || {})
-                setTravelers(parsed.travelers || { men: 1, women: 0, kids: 0, toddlers: 0 })
-                setShowForm(false)
+                if (parsed.data?.categories?.length > 0) {
+                    setPackingData(parsed.data)
+                    setChecked(parsed.checked || {})
+                    setTravelers(parsed.travelers || { men: 1, women: 0, kids: 0, toddlers: 0 })
+                    setShowForm(false)
+                }
             } catch (e) { }
         }
-    }, [session, id])
+    }, [session, id, router.isReady])
 
     const loadTrip = async () => {
         const res = await fetch(`/api/trips/${id}`, {

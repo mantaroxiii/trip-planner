@@ -4,17 +4,30 @@
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).end()
 
-    const { destination, days } = req.body
-    if (!destination) return res.status(400).json({ error: 'Missing destination' })
+    const { destination, planTitle } = req.body
+    if (!destination && !planTitle) return res.status(400).json({ error: 'Missing destination' })
 
     try {
         // 1. Geocode destination — try multiple strategies
         let loc = null
-        const queries = [destination]
-        // Try first word (e.g. "คิวชู ญี่ปุ่น" → "คิวชู")
-        if (destination.includes(' ')) queries.push(destination.split(' ')[0])
-        // Try each word separately
-        destination.split(/[\s,·]+/).forEach(w => { if (w.length > 1 && !queries.includes(w)) queries.push(w) })
+        const queries = []
+        if (destination) queries.push(destination)
+        // Try first word of destination (e.g. "คิวชู ญี่ปุ่น" → "คิวชู")
+        if (destination && destination.includes(' ')) queries.push(destination.split(' ')[0])
+        // Try each word of destination separately
+        if (destination) destination.split(/[\s,·]+/).forEach(w => { if (w.length > 1 && !queries.includes(w)) queries.push(w) })
+        // Extract words from plan title (usually in English, e.g. "Kyushu Spring Adventure")
+        if (planTitle) {
+            // Try the full title first
+            queries.push(planTitle.replace(/[:\-–—·]/g, ' ').trim())
+            // Then individual words (4+ chars to skip "the", "and" etc.)
+            planTitle.split(/[\s:,\-–—·&]+/).forEach(w => {
+                const clean = w.trim()
+                if (clean.length >= 4 && !queries.includes(clean) && !/^(spring|summer|autumn|winter|adventure|trip|tour|guide|part|day|days|cherry|scenic|blossoms|drives|night|week|plan|itinerary)$/i.test(clean)) {
+                    queries.push(clean)
+                }
+            })
+        }
 
         for (const q of queries) {
             const geoRes = await fetch(

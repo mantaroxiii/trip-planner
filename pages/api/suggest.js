@@ -45,7 +45,7 @@ Return ONLY a valid JSON object in this exact format (no markdown, no extra text
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { temperature: 0.8, maxOutputTokens: 512, responseMimeType: 'application/json' },
+                    generationConfig: { temperature: 0.8, maxOutputTokens: 1024, responseMimeType: 'application/json' },
                 }),
             }
         )
@@ -57,7 +57,25 @@ Return ONLY a valid JSON object in this exact format (no markdown, no extra text
         let text = parts.map(p => p.text || '').join('')
         text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
-        const parsed = JSON.parse(text)
+        let parsed
+        try {
+            parsed = JSON.parse(text)
+        } catch (parseErr) {
+            // Attempt JSON repair for truncated responses
+            let repaired = text
+            const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length
+            if (quoteCount % 2 !== 0) repaired += '"'
+            repaired = repaired.replace(/,\s*$/, '')
+            const opens = (repaired.match(/[\[{]/g) || []).length
+            const closes = (repaired.match(/[\]}]/g) || []).length
+            for (let i = 0; i < opens - closes; i++) {
+                const lastOpen = Math.max(repaired.lastIndexOf('['), repaired.lastIndexOf('{'))
+                const lastClose = Math.max(repaired.lastIndexOf(']'), repaired.lastIndexOf('}'))
+                if (lastOpen > lastClose) repaired += repaired[lastOpen] === '[' ? ']' : '}'
+                else repaired += ']}'
+            }
+            parsed = JSON.parse(repaired)
+        }
         return res.json(parsed)
     } catch (e) {
         console.error('Suggest error:', e)

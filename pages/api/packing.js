@@ -35,12 +35,21 @@ Dates: ${dates || 'Unknown'}
 Travelers: ${travelersDesc || '1 person'}
 Activities: ${activities}
 
-Generate a comprehensive packing list organized by categories.
-Consider the travelers (gender, age), activities, destination, and weather.
-${travelers?.women > 0 ? 'Include women-specific items (skincare, makeup, sanitary products etc.).' : ''}
-${travelers?.kids > 0 || travelers?.toddlers > 0 ? 'Include kid-specific items (toys, snacks, diapers for toddlers, etc.).' : ''}
-Each category should have 3-10 items. Keep item names SHORT (under 30 chars).
-For items that need quantity, add quantity in parentheses like "เสื้อยืด (${(travelers?.men || 0) + (travelers?.women || 0) + (travelers?.kids || 0)} ตัว)".
+Generate a packing list organized BY PERSON TYPE. Do NOT create generic categories like "เสื้อผ้าทั่วไป".
+Instead, create separate categories for each traveler type, plus shared items.
+
+${travelers?.men > 0 ? `- "👨 ของผู้ชาย" — clothes, toiletries, accessories specific to ${travelers.men} men` : ''}
+${travelers?.women > 0 ? `- "👩 ของผู้หญิง" — clothes, skincare, makeup, sanitary products, accessories for ${travelers.women} women` : ''}
+${travelers?.kids > 0 ? `- "🧒 ของเด็กโต" — clothes, toys, snacks for ${travelers.kids} kids age 7-15` : ''}
+${travelers?.toddlers > 0 ? `- "👶 ของเด็กเล็ก" — diapers, milk, baby food, toys for ${travelers.toddlers} toddlers age 0-6` : ''}
+- "📄 เอกสาร & การเงิน" — passport, insurance, cards, cash
+- "💊 ยา & สุขภาพ" — first aid, personal meds, sunscreen
+- "🔌 อุปกรณ์ & Gadgets" — charger, adapter, camera
+- "🧳 ของใช้ร่วม" — luggage items, umbrella, bags
+
+Each category should have 4-8 items. Keep item names SHORT (under 25 chars).
+For items needing quantity by person count, add quantity like "เสื้อยืด (${(travelers?.men || 0) + (travelers?.women || 0)} ตัว)".
+Write item names in Thai.
 Return ONLY valid JSON:
 {"categories": [
   {"icon": "emoji", "name": "category name", "items": ["item1", "item2"]}
