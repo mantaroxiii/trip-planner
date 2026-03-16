@@ -296,7 +296,7 @@ export default function TripPage() {
     }, 1000)
   }
 
-  const doGenerate = async () => {
+  const doGenerate = async (langOverride) => {
     setConfirmGenerate(false)
     if (provider !== 'gemini' && !apiKey) { setShowSettings(true); return }
     setStep('generating'); setError('')
@@ -304,7 +304,7 @@ export default function TripPage() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: provider === 'gemini' ? null : apiKey, provider, destination, dates, notes, lang }),
+        body: JSON.stringify({ apiKey: provider === 'gemini' ? null : apiKey, provider, destination, dates, notes, lang: langOverride || lang }),
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
@@ -973,7 +973,7 @@ export default function TripPage() {
               </button>
               <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', overflow: 'hidden' }}>
                 {['th', 'en', 'jp'].map(l => (
-                  <button key={l} onClick={() => setLang(l)}
+                  <button key={l} onClick={() => { if (l !== lang) { setLang(l); setTimeout(() => doGenerate(l), 100) } }}
                     style={{ background: lang === l ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: lang === l ? '800' : '500', fontFamily: 'inherit', borderRight: l !== 'jp' ? '1px solid rgba(255,255,255,0.15)' : 'none' }}>
                     {l === 'th' ? '🇹🇭' : l === 'en' ? '🇬🇧' : '🇯🇵'}
                   </button>
@@ -1149,21 +1149,25 @@ export default function TripPage() {
 
           {/* Actions */}
           {isOwner ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '14px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button className="btn-ghost" style={{ flex: 1 }} onClick={() => setStep('draft')}>← แก้ Notes</button>
                 <button className="btn-primary" style={{ flex: 2 }} onClick={handleGenerate}>✨ Generate ใหม่</button>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn-ghost" style={{ flex: 1, fontSize: '13px' }}
-                  onClick={generatePacking} disabled={packingLoading}>
-                  {packingLoading ? '...' : '🧳 Packing'}
-                </button>
-                <button className="btn-ghost" style={{ flex: 1, fontSize: '13px' }}
-                  onClick={generateGaps} disabled={gapsLoading}>
-                  {gapsLoading ? '...' : '🔍 เติม Slot ว่าง'}
-                </button>
+              {/* Packing List - prominent card */}
+              <div onClick={!packingLoading ? generatePacking : undefined}
+                style={{ background: 'linear-gradient(135deg,#F59E0B,#F97316)', borderRadius: '14px', padding: '14px 16px', cursor: packingLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(249,115,22,0.3)', transition: 'transform 0.2s', opacity: packingLoading ? 0.7 : 1 }}>
+                <div style={{ fontSize: '28px' }}>{packingLoading ? '⏳' : '🧳'}</div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>{packingLoading ? 'กำลังสร้าง Packing List...' : 'Packing List'}</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>AI สร้างรายการจัดกระเป๋าให้อัตโนมัติ</div>
+                </div>
+                <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
               </div>
+              <button className="btn-ghost" style={{ fontSize: '13px' }}
+                onClick={generateGaps} disabled={gapsLoading}>
+                {gapsLoading ? '⏳ กำลังวิเคราะห์...' : '🔍 เติม Slot ว่าง (AI)'}
+              </button>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>

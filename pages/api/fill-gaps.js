@@ -28,15 +28,16 @@ Day: ${dayTitle} (${dayDate || ''})
 Current schedule:
 ${timeline}
 
-IMPORTANT: Only suggest activities for time slots NOT already occupied. Find gaps of 1+ hours between existing activities, or before the first activity, or after the last one.
+IMPORTANT: Only suggest activities for time slots NOT already occupied. Find gaps of 1+ hours between existing activities, or before the first activity (after 08:00), or after the last one (before 22:00).
+Suggest at most 3 activities. Keep titles and details SHORT.
 
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON:
 {"gaps": [
   {
     "startTime": "HH:MM",
     "endTime": "HH:MM",
     "duration": "X hours",
-    "suggestion": {"time": "HH:MM", "title": "...", "detail": "...", "icon": "...", "type": "..."}
+    "suggestion": {"time": "HH:MM", "title": "short title", "detail": "short detail", "icon": "emoji", "type": "sight"}
   }
 ]}
 
@@ -50,22 +51,39 @@ If no gaps exist, return: {"gaps": []}`
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { temperature: 0.7, maxOutputTokens: 1024, responseMimeType: 'application/json' },
+                    generationConfig: {
+                        temperature: 0.7,
+                        maxOutputTokens: 4096,
+                        responseMimeType: 'application/json',
+                    },
                 }),
             }
         )
 
         const data = await response.json()
-        if (!response.ok) throw new Error(data.error?.message || 'Gemini API error')
+        if (!response.ok) {
+            console.error('Gemini API error:', JSON.stringify(data.error || data))
+            throw new Error(data.error?.message || 'Gemini API error')
+        }
 
-        const parts = data.candidates?.[0]?.content?.parts || []
-        let text = parts.map(p => p.text || '').join('')
+        const candidate = data.candidates?.[0]
+        if (!candidate?.content?.parts) {
+            console.error('No candidate parts:', JSON.stringify(data))
+            throw new Error('AI returned empty response')
+        }
+
+        let text = candidate.content.parts.map(p => p.text || '').join('')
         text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
+        if (!text) throw new Error('AI returned empty text')
+
         const parsed = JSON.parse(text)
+        if (!parsed.gaps || !Array.isArray(parsed.gaps)) {
+            throw new Error('Invalid response structure')
+        }
         return res.json(parsed)
     } catch (e) {
-        console.error('Fill gaps error:', e)
-        return res.status(500).json({ error: e.message || 'Failed to analyze gaps' })
+        console.error('Fill gaps error:', e.message)
+        return res.status(500).json({ error: `Fill gaps: ${e.message}` })
     }
 }
