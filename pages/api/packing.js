@@ -41,21 +41,20 @@ Return ONLY valid JSON in this exact format (no markdown, no extra text):
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { temperature: 0.5, maxOutputTokens: 800 },
+                    generationConfig: { temperature: 0.5, maxOutputTokens: 800, responseMimeType: 'application/json' },
                 }),
             }
         )
 
         const data = await response.json()
-        let text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        if (!response.ok) throw new Error(data.error?.message || 'Gemini API error')
 
-        // Strip markdown code blocks (Gemini 2.5 may wrap in ```json)
-        text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '')
+        // With responseMimeType: 'application/json', Gemini returns clean JSON
+        const parts = data.candidates?.[0]?.content?.parts || []
+        let text = parts.map(p => p.text || '').join('')
+        text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
 
-        const jsonMatch = text.match(/\{[\s\S]*\}/)
-        if (!jsonMatch) throw new Error('Invalid AI response')
-
-        const parsed = JSON.parse(jsonMatch[0])
+        const parsed = JSON.parse(text)
         return res.json(parsed)
     } catch (e) {
         console.error('Packing error:', e)
