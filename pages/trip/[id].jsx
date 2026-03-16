@@ -77,6 +77,8 @@ export default function TripPage() {
   const [editTitle, setEditTitle] = useState('')
   const [editTime, setEditTime] = useState('')
   const [editDetail, setEditDetail] = useState('')
+  const [editLat, setEditLat] = useState('')
+  const [editLng, setEditLng] = useState('')
 
   // AI Suggestion
   const [suggestingKey, setSuggestingKey] = useState(null)
@@ -552,6 +554,8 @@ export default function TripPage() {
       title: editTitle,
       time: editTime,
       detail: editDetail,
+      lat: editLat ? parseFloat(editLat) : undefined,
+      lng: editLng ? parseFloat(editLng) : undefined,
     }
     setPlan(newPlan)
     setEditingKey(null)
@@ -1494,6 +1498,10 @@ export default function TripPage() {
                         </div>
                         <input className="trip-input" value={editDetail} onChange={e => setEditDetail(e.target.value)} placeholder="รายละเอียด (optional)" style={{ padding: '7px 10px', fontSize: '12px' }} />
                         <div style={{ display: 'flex', gap: '8px' }}>
+                          <input className="trip-input" type="number" step="any" value={editLat} onChange={e => setEditLat(e.target.value)} placeholder="📍 lat (เช่น 35.6586)" style={{ flex: 1, padding: '7px 10px', fontSize: '11px' }} />
+                          <input className="trip-input" type="number" step="any" value={editLng} onChange={e => setEditLng(e.target.value)} placeholder="📍 lng (เช่น 139.7454)" style={{ flex: 1, padding: '7px 10px', fontSize: '11px' }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
                           <button className="btn-ghost" style={{ flex: 1, padding: '7px' }} onClick={() => setEditingKey(null)}>ยกเลิก</button>
                           <button className="btn-primary" style={{ flex: 2, padding: '7px', fontSize: '13px' }} onClick={() => saveInlineEdit(activeDay, ei)}>บันทึก</button>
                         </div>
@@ -1509,6 +1517,13 @@ export default function TripPage() {
                           {ev.detail && <div style={{ fontSize: '12px', color: ev.warning ? '#d97706' : '#38BDF8', marginTop: '2px' }}>{ev.detail}</div>}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
                             <span style={{ display: 'inline-block', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: light, color: col, fontWeight: '700', border: `1px solid ${col}33` }}>{ev.type}</span>
+                            {ev.lat && ev.lng && (
+                              <a href={`https://www.google.com/maps/search/?api=1&query=${ev.lat},${ev.lng}`} target="_blank" rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: 'rgba(16,185,129,0.1)', color: '#10B981', fontWeight: '700', border: '1px solid rgba(16,185,129,0.2)', textDecoration: 'none' }}>
+                                📍 Maps
+                              </a>
+                            )}
                             {/* Expense entries */}
                             {(expenses[key] || []).map((exp, xi) => (
                               <span key={xi} className="budget-tag" title={`${exp.userName} · ${new Date(exp.ts).toLocaleString('th-TH')}`}>
@@ -1553,7 +1568,7 @@ export default function TripPage() {
                             <>
                               <button className="icon-btn" title="AI Suggestion" onClick={() => { setSuggestions([]); fetchSuggestions(activeDay, ei) }}
                                 style={{ fontSize: '15px', opacity: 0.7 }}>✨</button>
-                              <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || '') }}
+                              <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || ''); setEditLat(ev.lat || ''); setEditLng(ev.lng || '') }}
                                 style={{ fontSize: '15px', opacity: 0.7 }}>✏️</button>
                             </>
                           )}
@@ -1695,25 +1710,14 @@ export default function TripPage() {
 
           {/* Spending Report - visible to owner + members */}
           {!isGuest && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
-              <div onClick={() => router.push(`/trip/spending?id=${id}`)}
-                style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(14,165,233,0.3)', transition: 'transform 0.2s' }}>
-                <div style={{ fontSize: '28px' }}>📊</div>
-                <div>
-                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Spending Report & Split Bill</div>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสรุปค่าใช้จ่าย · หารบิล · กราฟ · Log</div>
-                </div>
-                <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
+            <div onClick={() => router.push(`/trip/spending?id=${id}`)}
+              style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(14,165,233,0.3)', transition: 'transform 0.2s', marginTop: '10px' }}>
+              <div style={{ fontSize: '28px' }}>📊</div>
+              <div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Spending Report & Split Bill</div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสรุปค่าใช้จ่าย · หารบิล · กราฟ · Log</div>
               </div>
-              <div onClick={() => router.push(`/trip/map?id=${id}`)}
-                style={{ background: 'linear-gradient(135deg,#065F46,#10B981)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(16,185,129,0.3)', transition: 'transform 0.2s' }}>
-                <div style={{ fontSize: '28px' }}>📍</div>
-                <div>
-                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Map View</div>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>ดูสถานที่บนแผนที่ · เส้นทางแต่ละวัน</div>
-                </div>
-                <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
-              </div>
+              <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
             </div>
           )}
           <div style={{ fontSize: '11px', color: '#38BDF8', textAlign: 'center', marginTop: '10px' }}>
