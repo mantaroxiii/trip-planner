@@ -132,6 +132,12 @@ export default function TripPage() {
   const [convertAmount, setConvertAmount] = useState('')
   const [convertDirection, setConvertDirection] = useState('foreign') // 'foreign' = foreign→THB, 'thb' = THB→foreign
 
+  // Budget tracker
+  const [budgetMap, setBudgetMap] = useState({}) // key: 'dayIdx-eventIdx', value: cost in foreign currency
+  const [editingBudget, setEditingBudget] = useState(null) // 'dayIdx-eventIdx'
+  const [budgetInput, setBudgetInput] = useState('')
+  const [showBudgetSummary, setShowBudgetSummary] = useState(false)
+
   const CURRENCY_MAP = {
     'japan': 'JPY', 'ญี่ปุ่น': 'JPY', 'tokyo': 'JPY', 'osaka': 'JPY', 'kyoto': 'JPY', 'kyushu': 'JPY', 'hokkaido': 'JPY', 'คิวชู': 'JPY', 'โตเกียว': 'JPY', 'โอซาก้า': 'JPY',
     'korea': 'KRW', 'เกาหลี': 'KRW', 'seoul': 'KRW', 'busan': 'KRW', 'โซล': 'KRW',
@@ -211,8 +217,24 @@ export default function TripPage() {
       if (savedChecked) setChecked(JSON.parse(savedChecked))
       if (savedNotes) setNoteMap(JSON.parse(savedNotes))
       if (savedImages) setNoteImages(JSON.parse(savedImages))
+      const savedBudget = localStorage.getItem(`budget-${id}`)
+      if (savedBudget) try { setBudgetMap(JSON.parse(savedBudget)) } catch (e) { }
     }
   }, [session, id])
+
+  // Budget helpers
+  const saveBudget = (map) => { setBudgetMap(map); if (id) localStorage.setItem(`budget-${id}`, JSON.stringify(map)) }
+  const setBudgetForEvent = (dayIdx, eventIdx, cost) => {
+    const key = `${dayIdx}-${eventIdx}`
+    const map = { ...budgetMap }
+    if (cost > 0) map[key] = cost; else delete map[key]
+    saveBudget(map); setEditingBudget(null); setBudgetInput('')
+  }
+  const getDayBudget = (dayIdx) => {
+    if (!plan?.days?.[dayIdx]) return 0
+    return plan.days[dayIdx].events.reduce((sum, _, ei) => sum + (budgetMap[`${dayIdx}-${ei}`] || 0), 0)
+  }
+  const getTotalBudget = () => Object.values(budgetMap).reduce((sum, v) => sum + v, 0)
 
   // 3. Realtime
   useEffect(() => {
@@ -533,23 +555,31 @@ export default function TripPage() {
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
     * { box-sizing: border-box; }
     body { font-family: 'Plus Jakarta Sans', -apple-system, sans-serif; }
-    .trip-input { width:100%; border:1.5px solid rgba(14,165,233,0.2); border-radius:12px; padding:10px 14px; font-size:14px; outline:none; background:rgba(255,255,255,0.7); font-family:inherit; color:#0C4A6E; transition:border-color 0.2s; backdrop-filter:blur(4px); }
-    .trip-input:focus { border-color:#0EA5E9; }
+    .trip-input { width:100%; border:1.5px solid rgba(14,165,233,0.15); border-radius:14px; padding:11px 16px; font-size:14px; outline:none; background:rgba(255,255,255,0.85); font-family:inherit; color:#0C4A6E; transition:all 0.3s; backdrop-filter:blur(8px); }
+    .trip-input:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.1); }
     .trip-input::placeholder { color:#BAE6FD; }
-    .trip-textarea { width:100%; border:1.5px solid rgba(14,165,233,0.2); border-radius:12px; padding:12px 14px; font-size:14px; outline:none; resize:vertical; min-height:180px; font-family:inherit; color:#0C4A6E; background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); transition:border-color 0.2s; }
-    .trip-textarea:focus { border-color:#0EA5E9; }
-    .btn-primary { background:linear-gradient(135deg,#0EA5E9,#38BDF8); color:white; border:none; border-radius:12px; padding:13px 20px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; transition:all 0.2s; }
-    .btn-primary:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 6px 20px rgba(14,165,233,0.35); }
-    .btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
-    .btn-ghost { background:rgba(255,255,255,0.6); border:1.5px solid rgba(14,165,233,0.2); color:#0C4A6E; border-radius:10px; padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.2s; backdrop-filter:blur(4px); }
-    .btn-ghost:hover { background:white; border-color:#0EA5E9; }
-    .event-card { background:rgba(255,255,255,0.8); border-radius:14px; overflow:hidden; box-shadow:0 2px 8px rgba(14,165,233,0.08); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.9); transition:all 0.2s; }
-    .event-card:hover { box-shadow:0 4px 16px rgba(14,165,233,0.14); transform:translateY(-1px); }
-    .icon-btn { background:none; border:none; cursor:pointer; padding:4px; border-radius:6px; transition:all 0.15s; display:flex; align-items:center; justify-content:center; }
-    .icon-btn:hover { background:rgba(14,165,233,0.1); }
-    .day-tab { flex-shrink:0; padding:8px 13px; border-radius:12px; border:2px solid transparent; cursor:pointer; text-align:center; font-size:11px; font-weight:600; transition:all 0.2s; font-family:inherit; }
-    .modal-overlay { position:fixed; inset:0; background:rgba(12,74,110,0.3); backdrop-filter:blur(4px); z-index:999; display:flex; align-items:flex-end; justify-content:center; }
-    .modal-sheet { background:rgba(255,255,255,0.95); backdrop-filter:blur(20px); border-radius:24px 24px 0 0; padding:24px 20px 40px; width:100%; max-width:540px; border:1px solid rgba(255,255,255,0.9); }
+    .trip-textarea { width:100%; border:1.5px solid rgba(14,165,233,0.15); border-radius:14px; padding:12px 16px; font-size:14px; outline:none; resize:vertical; min-height:180px; font-family:inherit; color:#0C4A6E; background:rgba(255,255,255,0.85); backdrop-filter:blur(8px); transition:all 0.3s; }
+    .trip-textarea:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.1); }
+    .btn-primary { background:linear-gradient(135deg,#0EA5E9,#38BDF8); color:white; border:none; border-radius:14px; padding:13px 20px; font-size:15px; font-weight:700; cursor:pointer; font-family:inherit; transition:all 0.3s; box-shadow:0 4px 15px rgba(14,165,233,0.25); }
+    .btn-primary:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 8px 25px rgba(14,165,233,0.4); background:linear-gradient(135deg,#0284C7,#0EA5E9); }
+    .btn-primary:active { transform:translateY(0); }
+    .btn-primary:disabled { opacity:0.5; cursor:not-allowed; box-shadow:none; }
+    .btn-ghost { background:rgba(255,255,255,0.7); border:1.5px solid rgba(14,165,233,0.15); color:#0C4A6E; border-radius:12px; padding:8px 14px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.3s; backdrop-filter:blur(8px); }
+    .btn-ghost:hover { background:white; border-color:#0EA5E9; box-shadow:0 2px 10px rgba(14,165,233,0.12); }
+    .event-card { background:rgba(255,255,255,0.85); border-radius:16px; overflow:hidden; box-shadow:0 2px 12px rgba(14,165,233,0.06); backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,0.95); transition:all 0.3s cubic-bezier(0.4,0,0.2,1); }
+    .event-card:hover { box-shadow:0 8px 30px rgba(14,165,233,0.12); transform:translateY(-2px); border-color:rgba(14,165,233,0.15); }
+    .icon-btn { background:none; border:none; cursor:pointer; padding:4px; border-radius:8px; transition:all 0.2s; display:flex; align-items:center; justify-content:center; }
+    .icon-btn:hover { background:rgba(14,165,233,0.08); transform:scale(1.1); }
+    .day-tab { flex-shrink:0; padding:10px 15px; border-radius:14px; border:2px solid transparent; cursor:pointer; text-align:center; font-size:11px; font-weight:600; transition:all 0.3s; font-family:inherit; }
+    .day-tab:hover { transform:translateY(-2px); }
+    .modal-overlay { position:fixed; inset:0; background:rgba(12,74,110,0.4); backdrop-filter:blur(8px); z-index:999; display:flex; align-items:flex-end; justify-content:center; animation:fadeIn 0.2s ease; }
+    .modal-sheet { background:rgba(255,255,255,0.97); backdrop-filter:blur(24px); border-radius:28px 28px 0 0; padding:24px 20px 40px; width:100%; max-width:540px; border:1px solid rgba(255,255,255,0.95); box-shadow:0 -8px 40px rgba(14,165,233,0.15); animation:slideUp 0.3s ease; }
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+    @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
+    @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+    .budget-tag { display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:700; padding:2px 6px; border-radius:6px; background:rgba(245,158,11,0.12); color:#D97706; cursor:pointer; transition:all 0.2s; }
+    .budget-tag:hover { background:rgba(245,158,11,0.2); transform:scale(1.05); }
   `
 
   /* ─── LOADING ─── */
@@ -1222,7 +1252,27 @@ export default function TripPage() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E', textDecoration: isDone ? 'line-through' : 'none' }}>{ev.title}</div>
                           {ev.detail && <div style={{ fontSize: '12px', color: ev.warning ? '#d97706' : '#38BDF8', marginTop: '2px' }}>{ev.detail}</div>}
-                          <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: light, color: col, fontWeight: '700', border: `1px solid ${col}33` }}>{ev.type}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                            <span style={{ display: 'inline-block', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: light, color: col, fontWeight: '700', border: `1px solid ${col}33` }}>{ev.type}</span>
+                            {/* Budget tag */}
+                            {!isGuest && (
+                              editingBudget === key ? (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }} onClick={e => e.stopPropagation()}>
+                                  <input type="number" value={budgetInput} onChange={e => setBudgetInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') setBudgetForEvent(activeDay, ei, parseFloat(budgetInput) || 0); if (e.key === 'Escape') setEditingBudget(null) }}
+                                    placeholder="0" autoFocus inputMode="decimal"
+                                    style={{ width: '70px', border: '1.5px solid #F59E0B', borderRadius: '6px', padding: '2px 6px', fontSize: '11px', outline: 'none', fontFamily: 'inherit', color: '#92400E' }} />
+                                  <span style={{ fontSize: '10px', color: '#92400E', fontWeight: '600' }}>{foreignCurrency}</span>
+                                  <button onClick={() => setBudgetForEvent(activeDay, ei, parseFloat(budgetInput) || 0)}
+                                    style={{ background: '#F59E0B', color: 'white', border: 'none', borderRadius: '4px', padding: '1px 5px', fontSize: '10px', cursor: 'pointer', fontWeight: '700' }}>✓</button>
+                                </div>
+                              ) : (
+                                <span className="budget-tag" onClick={e => { e.stopPropagation(); setEditingBudget(key); setBudgetInput(budgetMap[key]?.toString() || '') }}>
+                                  💰 {budgetMap[key] ? `${budgetMap[key].toLocaleString()} ${foreignCurrency}` : 'ใส่งบ'}
+                                </span>
+                              )
+                            )}
+                          </div>
                         </div>
                         <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                           {isOwner && (
@@ -1301,6 +1351,50 @@ export default function TripPage() {
               })}
             </div>
           </div>
+
+          {/* Day Budget Summary */}
+          {getDayBudget(activeDay) > 0 && (
+            <div style={{ background: 'linear-gradient(135deg,rgba(255,251,235,0.9),rgba(254,243,199,0.9))', backdropFilter: 'blur(12px)', borderRadius: '16px', padding: '14px 16px', marginTop: '10px', border: '1px solid rgba(245,158,11,0.15)', boxShadow: '0 4px 15px rgba(245,158,11,0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#92400E', fontWeight: '600', opacity: 0.7 }}>💰 งบวัน {plan.days[activeDay]?.day}</div>
+                  <div style={{ fontSize: '20px', fontWeight: '800', color: '#92400E', marginTop: '2px' }}>
+                    {getDayBudget(activeDay).toLocaleString()} <span style={{ fontSize: '13px', fontWeight: '600' }}>{foreignCurrency}</span>
+                  </div>
+                </div>
+                {exchangeRate && (
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '11px', color: '#92400E', opacity: 0.5 }}>≈ THB</div>
+                    <div style={{ fontSize: '16px', fontWeight: '700', color: '#B45309' }}>
+                      ฿{(getDayBudget(activeDay) * exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Total Trip Budget */}
+          {getTotalBudget() > 0 && (
+            <div style={{ background: 'linear-gradient(135deg,rgba(16,185,129,0.1),rgba(52,211,153,0.08))', backdropFilter: 'blur(12px)', borderRadius: '16px', padding: '14px 16px', marginTop: '8px', border: '1px solid rgba(16,185,129,0.15)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#065F46', fontWeight: '600', opacity: 0.7 }}>📊 งบรวมทั้งทริป</div>
+                  <div style={{ fontSize: '20px', fontWeight: '800', color: '#065F46', marginTop: '2px' }}>
+                    {getTotalBudget().toLocaleString()} <span style={{ fontSize: '13px', fontWeight: '600' }}>{foreignCurrency}</span>
+                  </div>
+                </div>
+                {exchangeRate && (
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '11px', color: '#065F46', opacity: 0.5 }}>≈ THB</div>
+                    <div style={{ fontSize: '18px', fontWeight: '800', color: '#047857' }}>
+                      ฿{(getTotalBudget() * exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           {isOwner ? (
