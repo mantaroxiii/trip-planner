@@ -1981,8 +1981,8 @@ export default function TripPage() {
               let day0Date = ''
               const firstDate = newPlan.days[0]?.date
               if (firstDate) {
-                const parsed = new Date(firstDate.replace(/(\d+)\s+(\w+)\s*(\d*)/, (_, d, m, y) => `${d} ${m} ${y || new Date().getFullYear()}`))
-                if (!isNaN(parsed)) { parsed.setDate(parsed.getDate() - 1); day0Date = parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
+                const parsed = parseTripDate(firstDate)
+                if (parsed) { parsed.setDate(parsed.getDate() - 1); day0Date = `${parsed.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][parsed.getMonth()]}` }
               }
               newPlan.days.unshift({ day: 0, title: 'วันเตรียมตัว (Day 0)', date: day0Date, emoji: '🧳', events: [] })
               setPlan(newPlan); setActiveDay(0)
