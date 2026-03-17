@@ -1975,9 +1975,7 @@ export default function TripPage() {
           {isOwner && (
             <button onClick={async () => {
               const newPlan = JSON.parse(JSON.stringify(plan))
-              const dayNum = 0
-              newPlan.days.unshift({ day: dayNum, title: `วันก่อนทริป`, date: '', emoji: '📌', events: [] })
-              newPlan.days.forEach((d, i) => { d.day = i + 1 })
+              newPlan.days.unshift({ day: 0, title: 'วันเตรียมตัว (Day 0)', date: '', emoji: '🧳', events: [] })
               setPlan(newPlan); setActiveDay(0)
               lastSaveTimeRef.current = Date.now()
               await fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
