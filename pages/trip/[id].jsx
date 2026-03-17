@@ -92,6 +92,10 @@ export default function TripPage() {
   // Tools menu
   const [showToolsMenu, setShowToolsMenu] = useState(false)
 
+  // Drag & drop reorder
+  const [dragIdx, setDragIdx] = useState(null)
+  const [dragOverIdx, setDragOverIdx] = useState(null)
+
   // AI Suggestion
   const [suggestingKey, setSuggestingKey] = useState(null)
   const [suggestions, setSuggestions] = useState([])
@@ -693,6 +697,38 @@ export default function TripPage() {
     const original = newPlan.days[dayIdx].events[evIdx]
     const copy = { ...original, title: original.title + ' (copy)' }
     newPlan.days[dayIdx].events.splice(evIdx + 1, 0, copy)
+    setPlan(newPlan)
+    setEditingKey(null)
+    lastSaveTimeRef.current = Date.now()
+    await fetch(`/api/trips/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_json: newPlan }),
+    })
+  }
+
+  const moveEvent = async (dayIdx, fromIdx, toIdx) => {
+    if (toIdx < 0 || toIdx >= plan.days[dayIdx].events.length) return
+    const newPlan = JSON.parse(JSON.stringify(plan))
+    const events = newPlan.days[dayIdx].events
+    const [moved] = events.splice(fromIdx, 1)
+    events.splice(toIdx, 0, moved)
+    // Remap notes, images, checked
+    const newNoteMap = { ...noteMap }
+    const newChecked = { ...checked }
+    const dayEvents = events.length
+    const remapKeys = (old, src, dst) => {
+      const srcKey = `${dayIdx}-${src}`
+      const dstKey = `${dayIdx}-${dst}`
+      if (old[srcKey] !== undefined) { old[dstKey] = old[srcKey] } else { delete old[dstKey] }
+    }
+    // Clear and rebuild
+    for (let i = 0; i < dayEvents; i++) {
+      const oldKey = `${dayIdx}-${i}`
+      delete newNoteMap[oldKey]
+      delete newChecked[oldKey]
+    }
+    // Rebuild based on original indices that we know
     setPlan(newPlan)
     setEditingKey(null)
     lastSaveTimeRef.current = Date.now()
@@ -1946,7 +1982,12 @@ export default function TripPage() {
                 const isDone = checked[key]
                 const isEditing = editingKey === key
                 return (
-                  <div key={ei} className="event-card" style={{ opacity: isDone ? .55 : 1 }}>
+                  <div key={ei} className="event-card"
+                    draggable={!isEditing && (isOwner || !isGuest)}
+                    onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(ei) }}
+                    onDragOver={e => { e.preventDefault(); setDragOverIdx(ei) }}
+                    onDragEnd={() => { if (dragIdx !== null && dragOverIdx !== null && dragIdx !== dragOverIdx) moveEvent(activeDay, dragIdx, dragOverIdx); setDragIdx(null); setDragOverIdx(null) }}
+                    style={{ opacity: isDone ? .55 : 1, borderTop: dragOverIdx === ei && dragIdx !== null && dragIdx > ei ? `3px solid ${col}` : 'none', borderBottom: dragOverIdx === ei && dragIdx !== null && dragIdx < ei ? `3px solid ${col}` : 'none', transition: 'border 0.15s' }}>
                     {isEditing && (isOwner || !isGuest) ? (
                       <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ display: 'flex', gap: '8px' }}>
@@ -2030,6 +2071,13 @@ export default function TripPage() {
                       </div>
                     ) : (
                       <div onClick={() => { if (!isGuest) toggleCheck(key) }} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '11px', cursor: isGuest ? 'default' : 'pointer' }}>
+                        {(isOwner || !isGuest) && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', flexShrink: 0, paddingTop: '2px' }} onClick={e => e.stopPropagation()}>
+                            {ei > 0 && <button className="icon-btn" onClick={() => moveEvent(activeDay, ei, ei - 1)} style={{ fontSize: '10px', padding: '1px', opacity: 0.4 }} title="ย้ายขึ้น">▲</button>}
+                            <span style={{ fontSize: '12px', cursor: 'grab', opacity: 0.25, textAlign: 'center', lineHeight: 1 }} title="ลากเพื่อย้าย">⠀⨀⠀</span>
+                            {ei < (day.events || []).length - 1 && <button className="icon-btn" onClick={() => moveEvent(activeDay, ei, ei + 1)} style={{ fontSize: '10px', padding: '1px', opacity: 0.4 }} title="ย้ายลง">▼</button>}
+                          </div>
+                        )}
                         <div style={{ fontSize: '11px', color: '#38BDF8', fontFamily: 'monospace', width: '36px', flexShrink: 0, paddingTop: '3px', fontWeight: '700' }}>{ev.time}</div>
                         <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: isDone ? '#d1fae5' : light, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0, transition: 'all 0.2s' }}>
                           {isDone ? '✅' : ev.icon}
