@@ -1972,7 +1972,7 @@ export default function TripPage() {
         }
         {/* Day tabs */}
         <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', overflowX: 'auto', background: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(14,165,233,0.1)', alignItems: 'center' }}>
-          {(isOwner || !isGuest) && (
+          {isOwner && (
             <button onClick={async () => {
               const newPlan = JSON.parse(JSON.stringify(plan))
               const dayNum = 0
@@ -1993,7 +1993,7 @@ export default function TripPage() {
               <div style={{ fontSize: '10px', opacity: .8 }}>{d.date}</div>
             </button>
           ))}
-          {(isOwner || !isGuest) && (
+          {isOwner && (
             <button onClick={async () => {
               const newPlan = JSON.parse(JSON.stringify(plan))
               const newDay = { day: newPlan.days.length + 1, title: `วัน ${newPlan.days.length + 1}`, date: '', emoji: '📌', events: [] }
