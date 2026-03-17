@@ -106,6 +106,7 @@ export default function TripPage() {
   const [showProposals, setShowProposals] = useState(false)
   const [proposalDesc, setProposalDesc] = useState('')
   const [proposalLoading, setProposalLoading] = useState(false)
+  const [expenseType, setExpenseType] = useState('shared') // 'shared' | 'personal'
   const [showProposalForm, setShowProposalForm] = useState(false)
   const [proposalLocalPlan, setProposalLocalPlan] = useState(null)
 
@@ -301,6 +302,7 @@ export default function TripPage() {
     const entry = {
       amount: amt,
       currency: expenseCurrency || foreignCurrency,
+      type: expenseType || 'shared',
       userEmail: session?.user?.email || '',
       userName: session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'You',
       ts: Date.now()
@@ -415,14 +417,43 @@ export default function TripPage() {
     if (res.ok) { const d = await res.json(); setProposals(d.proposals || []) }
   }
 
+  const computeChanges = (oldPlan, newPlan) => {
+    const changes = []
+    if (!oldPlan?.days || !newPlan?.days) return ''
+    const maxDays = Math.max(oldPlan.days.length, newPlan.days.length)
+    for (let d = 0; d < maxDays; d++) {
+      const oldDay = oldPlan.days[d]
+      const newDay = newPlan.days[d]
+      if (!oldDay && newDay) { changes.push(`➕ เพิ่มวันที่ ${d + 1}: ${newDay.title}`); continue }
+      if (oldDay && !newDay) { changes.push(`❌ ลบวันที่ ${d + 1}: ${oldDay.title}`); continue }
+      if (oldDay.title !== newDay.title) changes.push(`✏️ วัน ${d + 1}: เปลี่ยนชื่อ "${oldDay.title}" → "${newDay.title}"`)
+      const oldEvts = oldDay.events || []
+      const newEvts = newDay.events || []
+      const oldTitles = new Set(oldEvts.map(e => e.title))
+      const newTitles = new Set(newEvts.map(e => e.title))
+      newEvts.forEach(e => { if (!oldTitles.has(e.title)) changes.push(`➕ วัน${d + 1}: เพิ่ม "${e.title}"`) })
+      oldEvts.forEach(e => { if (!newTitles.has(e.title)) changes.push(`❌ วัน${d + 1}: ลบ "${e.title}"`) })
+      oldEvts.forEach(oe => {
+        const ne = newEvts.find(e => e.title === oe.title)
+        if (ne) {
+          if (oe.time !== ne.time) changes.push(`⏰ วัน${d + 1} "${oe.title}": เวลา ${oe.time || "-"} → ${ne.time || "-"}`)
+          if (oe.detail !== ne.detail) changes.push(`✏️ วัน${d + 1} "${oe.title}": แก้รายละเอียด`)
+        }
+      })
+    }
+    return changes.length > 0 ? changes.join('\n') : 'ไม่พบการเปลี่ยนแปลง'
+  }
+
   const submitProposal = async () => {
     if (!proposalLocalPlan) return
     setProposalLoading(true)
+    const changesSummary = computeChanges(plan, proposalLocalPlan)
+    const fullDesc = (proposalDesc || 'เสนอแก้ไข plan') + '\nการเปลี่ยนแปลง:\n' + changesSummary
     try {
       const res = await fetch('/api/proposals', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trip_id: id, plan_json: proposalLocalPlan, description: proposalDesc || 'เสนอแก้ไข plan' }),
+        body: JSON.stringify({ trip_id: id, plan_json: proposalLocalPlan, description: fullDesc }),
       })
       if (res.ok) {
         setShowProposalForm(false)
@@ -1121,7 +1152,7 @@ export default function TripPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E' }}>{p.proposer_name}</div>
-                    <div style={{ fontSize: '12px', color: '#38BDF8' }}>{p.description}</div>
+                    <div style={{ fontSize: '12px', color: '#38BDF8', whiteSpace: 'pre-line' }}>{p.description}</div>
                   </div>
                   <span style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '99px', fontWeight: '700', background: p.status === 'pending' ? '#E0F2FE' : p.status === 'approved' ? '#dcfce7' : '#fee2e2', color: p.status === 'pending' ? '#0284C7' : p.status === 'approved' ? '#15803d' : '#b91c1c' }}>
                     {p.status === 'pending' ? 'รอ' : p.status === 'approved' ? '✅' : '❌'}
@@ -2098,6 +2129,7 @@ export default function TripPage() {
                             {(expenses[key] || []).map((exp, xi) => (
                               <span key={xi} className="budget-tag" title={`${exp.userName} · ${new Date(exp.ts).toLocaleString('th-TH')}`}>
                                 💰 {exp.amount.toLocaleString()} {exp.currency}
+                                {exp.type === 'personal' && <span style={{ fontSize: '8px', background: '#FEE2E2', color: '#B91C1C', padding: '0 4px', borderRadius: '4px', marginLeft: '2px' }}>ส่วนตัว</span>}
                                 <span style={{ fontSize: '9px', opacity: 0.6, marginLeft: '2px' }}>({exp.userName?.split(' ')[0] || '?'})</span>
                                 {!isGuest && (
                                   <span onClick={e => { e.stopPropagation(); removeExpenseEntry(key, xi) }}
@@ -2119,6 +2151,11 @@ export default function TripPage() {
                                     <option value={foreignCurrency}>{foreignCurrency}</option>
                                     {!['THB', foreignCurrency].includes('USD') && <option value="USD">USD</option>}
                                     {!['THB', foreignCurrency].includes('EUR') && <option value="EUR">EUR</option>}
+                                  </select>
+                                  <select value={expenseType} onChange={e => setExpenseType(e.target.value)}
+                                    style={{ border: '1.5px solid #F59E0B', borderRadius: '6px', padding: '2px 3px', fontSize: '10px', color: '#92400E', background: 'white', fontFamily: 'inherit', cursor: 'pointer' }}>
+                                    <option value="shared">ส่วนรวม</option>
+                                    <option value="personal">ส่วนตัว</option>
                                   </select>
                                   <button onClick={() => addExpenseEntry(activeDay, ei)}
                                     style={{ background: '#F59E0B', color: 'white', border: 'none', borderRadius: '4px', padding: '1px 5px', fontSize: '10px', cursor: 'pointer', fontWeight: '700' }}>✓</button>
@@ -2252,6 +2289,35 @@ export default function TripPage() {
                   onClick={() => { setProposalLocalPlan(JSON.parse(JSON.stringify(plan))); setShowProposalForm(true) }}>
                   📤 เสนอแก้ไข Plan นี้
                 </button>
+              )}
+              {/* Tools for members too */}
+              <button className="btn-ghost" style={{ width: '100%', fontSize: '13px' }} onClick={() => setShowToolsMenu(!showToolsMenu)}>
+                🛠️ {showToolsMenu ? 'ซ่อนเครื่องมือ' : 'เครื่องมือเพิ่มเติม'} {showToolsMenu ? '▲' : '▼'}
+              </button>
+              {showToolsMenu && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div onClick={() => router.push(`/trip/packing?id=${id}`)}
+                    style={{ background: 'linear-gradient(135deg,#F59E0B,#F97316)', borderRadius: '14px', padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(249,115,22,0.3)' }}>
+                    <div style={{ fontSize: '24px' }}>🧳</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: '800', color: 'white' }}>Packing List</div>
+                      <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.8)' }}>AI จัดกระเป๋าให้</div>
+                    </div>
+                    <div style={{ fontSize: '18px', color: 'rgba(255,255,255,0.7)' }}>→</div>
+                  </div>
+                  <button className="btn-ghost" style={{ fontSize: '13px', width: '100%' }}
+                    onClick={() => { setShowSearch(!showSearch); setSearchQuery('') }}>
+                    🔍 {showSearch ? 'ปิดค้นหา' : 'ค้นหากิจกรรม'}
+                  </button>
+                  <button className="btn-ghost" style={{ fontSize: '13px', width: '100%' }}
+                    onClick={() => {
+                      const text = plan.days.map(d => `\n📍 ${d.title}\n${(d.events || []).map(e => `  ${e.time || ''} ${e.icon || ''} ${e.title}${e.detail ? ' - ' + e.detail : ''}`).join('\n')}`).join('\n')
+                      if (navigator.share) navigator.share({ title: trip?.title || 'Trip Plan', text }).catch(() => { })
+                      else { navigator.clipboard.writeText(text); alert('คัดลอกแผนทริปแล้ว!') }
+                    }}>
+                    📤 แชร์/Export แผนทริป
+                  </button>
+                </div>
               )}
             </div>
           )}
