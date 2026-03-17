@@ -122,6 +122,30 @@ export default function Trips() {
               {trip.dates && (
                 <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '1px' }}>📅 {trip.dates}</div>
               )}
+              {(() => {
+                if (!trip.dates) return null
+                const m = trip.dates.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([\u0E00-\u0E7Fa-zA-Z.]+)\s*(\d{2,4})?/)
+                if (!m) return null
+                const months = {
+                  'ม.ค.': 0, 'ก.พ.': 1, 'มี.ค.': 2, 'เม.ย.': 3, 'พ.ค.': 4, 'มิ.ย.': 5, 'ก.ค.': 6, 'ส.ค.': 7, 'ก.ย.': 8, 'ต.ค.': 9, 'พ.ย.': 10, 'ธ.ค.': 11,
+                  'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5, 'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+                }
+                const monthIdx = months[m[3]]
+                if (monthIdx === undefined) return null
+                let yr = m[4] ? parseInt(m[4]) : new Date().getFullYear()
+                if (yr > 2500) yr -= 543
+                const startDate = new Date(yr, monthIdx, parseInt(m[1]))
+                const endDate = new Date(yr, monthIdx, parseInt(m[2]))
+                const today = new Date(); today.setHours(0, 0, 0, 0)
+                const diffStart = Math.ceil((startDate - today) / 86400000)
+                const diffEnd = Math.ceil((endDate - today) / 86400000)
+                let label, bg, color
+                if (diffStart > 0) { label = `✈️ อีก ${diffStart} วัน!`; bg = '#DBEAFE'; color = '#1D4ED8' }
+                else if (diffStart === 0) { label = '🎉 วันนี้!'; bg = '#FEF3C7'; color = '#D97706' }
+                else if (diffEnd >= 0) { label = '🏖️ กำลังเที่ยวอยู่!'; bg = '#D1FAE5'; color = '#059669' }
+                else { label = '✅ เที่ยวแล้ว'; bg = '#F1F5F9'; color = '#94A3B8' }
+                return <div style={{ marginTop: '3px' }}><span style={{ fontSize: '10px', fontWeight: '700', background: bg, color, padding: '1px 8px', borderRadius: '99px' }}>{label}</span></div>
+              })()}
               <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '4px' }}>
                 แก้ไขล่าสุด {formatDate(trip.updated_at)}
               </div>

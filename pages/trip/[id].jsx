@@ -85,6 +85,13 @@ export default function TripPage() {
   const [editingDayTitle, setEditingDayTitle] = useState(false)
   const [dayTitleDraft, setDayTitleDraft] = useState('')
 
+  // Search
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showSearch, setShowSearch] = useState(false)
+
+  // Tools menu
+  const [showToolsMenu, setShowToolsMenu] = useState(false)
+
   // AI Suggestion
   const [suggestingKey, setSuggestingKey] = useState(null)
   const [suggestions, setSuggestions] = useState([])
@@ -673,6 +680,21 @@ export default function TripPage() {
     setEditLocation('')
     setEditNote('')
     setEditIcon('📌')
+    lastSaveTimeRef.current = Date.now()
+    await fetch(`/api/trips/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_json: newPlan }),
+    })
+  }
+
+  const duplicateEvent = async (dayIdx, evIdx) => {
+    const newPlan = JSON.parse(JSON.stringify(plan))
+    const original = newPlan.days[dayIdx].events[evIdx]
+    const copy = { ...original, title: original.title + ' (copy)' }
+    newPlan.days[dayIdx].events.splice(evIdx + 1, 0, copy)
+    setPlan(newPlan)
+    setEditingKey(null)
     lastSaveTimeRef.current = Date.now()
     await fetch(`/api/trips/${id}`, {
       method: 'PATCH',
@@ -1825,6 +1847,36 @@ export default function TripPage() {
           ))}
         </div>
 
+        {/* Search bar */}
+        {showSearch && (
+          <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(14,165,233,0.1)' }}>
+            <input className="trip-input" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              placeholder="🔍 ค้นหากิจกรรม ร้านอาหาร สถานที่..."
+              autoFocus style={{ padding: '8px 14px', fontSize: '13px' }} />
+            {searchQuery.trim() && (
+              <div style={{ maxHeight: '200px', overflowY: 'auto', marginTop: '6px' }}>
+                {plan.days.flatMap((d, di) =>
+                  (d.events || []).map((ev, ei) => ({ ev, di, ei, day: d }))
+                ).filter(({ ev }) =>
+                  (ev.title + ' ' + (ev.detail || '') + ' ' + (ev.location || '')).toLowerCase().includes(searchQuery.toLowerCase())
+                ).map(({ ev, di, day }, idx) => (
+                  <div key={idx} onClick={() => { setActiveDay(di); setShowSearch(false); setSearchQuery('') }}
+                    style={{ padding: '6px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', background: idx % 2 === 0 ? 'rgba(14,165,233,0.04)' : 'transparent' }}>
+                    <span style={{ fontSize: '14px' }}>{ev.icon || '📍'}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: '700', color: '#0C4A6E' }}>{ev.title}</div>
+                      <div style={{ fontSize: '10px', color: '#64748B' }}>วัน {day.day} {ev.time ? `· ${ev.time}` : ''}</div>
+                    </div>
+                  </div>
+                ))}
+                {plan.days.flatMap((d) => (d.events || []).filter(ev => (ev.title + ' ' + (ev.detail || '') + ' ' + (ev.location || '')).toLowerCase().includes(searchQuery.toLowerCase()))).length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '12px', color: '#94A3B8', fontSize: '12px' }}>ไม่พบผลลัพธ์</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Timeline */}
         <div className="container-main" style={{ padding: '12px' }}>
           <div style={{ borderRadius: '20px', overflow: 'hidden', border: `2px solid ${col}`, background: light, boxShadow: `0 4px 20px ${col}22` }}>
@@ -1962,7 +2014,13 @@ export default function TripPage() {
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button className="btn-ghost" style={{ flex: 1, padding: '7px' }} onClick={() => setEditingKey(null)}>ยกเลิก</button>
                           {isOwner && (
-                            <button style={{ padding: '7px 12px', background: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit' }}
+                            <button style={{ padding: '7px 10px', background: 'rgba(139,92,246,0.1)', color: '#8B5CF6', border: '1px solid rgba(139,92,246,0.2)', borderRadius: '10px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit' }}
+                              onClick={() => duplicateEvent(activeDay, ei)}>
+                              📋 dup
+                            </button>
+                          )}
+                          {isOwner && (
+                            <button style={{ padding: '7px 10px', background: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit' }}
                               onClick={() => { if (confirm('ลบกิจกรรมนี้?')) { const newPlan = JSON.parse(JSON.stringify(plan)); newPlan.days[activeDay].events.splice(ei, 1); setPlan(newPlan); setEditingKey(null); lastSaveTimeRef.current = Date.now(); fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) }) } }}>
                               🗑️ ลบ
                             </button>
@@ -2104,20 +2162,39 @@ export default function TripPage() {
                 <button className="btn-ghost" style={{ flex: 1 }} onClick={() => setStep('draft')}>← แก้ Notes</button>
                 <button className="btn-primary" style={{ flex: 2 }} onClick={handleGenerate}>✨ Generate ใหม่</button>
               </div>
-              {/* Packing List - navigate to dedicated page */}
-              <div onClick={() => router.push(`/trip/packing?id=${id}`)}
-                style={{ background: 'linear-gradient(135deg,#F59E0B,#F97316)', borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(249,115,22,0.3)', transition: 'transform 0.2s' }}>
-                <div style={{ fontSize: '28px' }}>🧳</div>
-                <div>
-                  <div style={{ fontSize: '15px', fontWeight: '800', color: 'white' }}>Packing List</div>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)' }}>เลือกผู้เดินทาง → AI จัดกระเป๋าให้</div>
-                </div>
-                <div style={{ marginLeft: 'auto', fontSize: '20px', color: 'rgba(255,255,255,0.7)' }}>→</div>
-              </div>
-              <button className="btn-ghost" style={{ fontSize: '13px' }}
-                onClick={generateGaps} disabled={gapsLoading}>
-                {gapsLoading ? '⏳ กำลังวิเคราะห์...' : '🔍 เติม Slot ว่าง (AI)'}
+              {/* Collapsible Tools Menu */}
+              <button className="btn-ghost" style={{ width: '100%', fontSize: '13px' }} onClick={() => setShowToolsMenu(!showToolsMenu)}>
+                🛠️ {showToolsMenu ? 'ซ่อนเครื่องมือ' : 'เครื่องมือเพิ่มเติม'} {showToolsMenu ? '▲' : '▼'}
               </button>
+              {showToolsMenu && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', animation: 'fadeIn 0.2s ease' }}>
+                  <div onClick={() => router.push(`/trip/packing?id=${id}`)}
+                    style={{ background: 'linear-gradient(135deg,#F59E0B,#F97316)', borderRadius: '14px', padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', boxShadow: '0 4px 15px rgba(249,115,22,0.3)' }}>
+                    <div style={{ fontSize: '24px' }}>🧳</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: '800', color: 'white' }}>Packing List</div>
+                      <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.8)' }}>AI จัดกระเป๋าให้</div>
+                    </div>
+                    <div style={{ fontSize: '18px', color: 'rgba(255,255,255,0.7)' }}>→</div>
+                  </div>
+                  <button className="btn-ghost" style={{ fontSize: '13px', width: '100%' }}
+                    onClick={generateGaps} disabled={gapsLoading}>
+                    {gapsLoading ? '⏳ กำลังวิเคราะห์...' : '🔍 เติม Slot ว่าง (AI)'}
+                  </button>
+                  <button className="btn-ghost" style={{ fontSize: '13px', width: '100%' }}
+                    onClick={() => { setShowSearch(!showSearch); setSearchQuery('') }}>
+                    🔍 {showSearch ? 'ปิดค้นหา' : 'ค้นหากิจกรรม'}
+                  </button>
+                  <button className="btn-ghost" style={{ fontSize: '13px', width: '100%' }}
+                    onClick={() => {
+                      const text = plan.days.map(d => `\n📍 ${d.title}\n${(d.events || []).map(e => `  ${e.time || ''} ${e.icon || ''} ${e.title}${e.detail ? ' - ' + e.detail : ''}`).join('\n')}`).join('\n')
+                      if (navigator.share) navigator.share({ title: trip?.title || 'Trip Plan', text }).catch(() => { })
+                      else { navigator.clipboard.writeText(text); alert('คัดลอกแผนทริปแล้ว!') }
+                    }}>
+                    📤 แชร์/Export แผนทริป
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px' }}>
