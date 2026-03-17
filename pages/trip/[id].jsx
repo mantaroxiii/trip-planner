@@ -1502,36 +1502,10 @@ export default function TripPage() {
                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                 ✈️
               </button>
-              <button onClick={() => { setShowDocs(true); loadDocs() }}
-                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
-                📄
-              </button>
               <button onClick={() => setShowChat(true)}
                 style={{ background: 'linear-gradient(135deg,rgba(139,92,246,0.4),rgba(14,165,233,0.4))', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                 💬
               </button>
-              <button onClick={() => setShowTimeline(true)}
-                style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
-                🗺️
-              </button>
-              <div style={{ display: 'flex', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.2)', overflow: 'hidden' }}>
-                {['th', 'en', 'jp'].map(l => (
-                  <button key={l} onClick={() => {
-                    if (l === lang) return
-                    setLang(l)
-                    if (plansByLang[l]) {
-                      // ใช้ plan จาก cache
-                      setPlan(plansByLang[l]); setActiveDay(0)
-                    } else {
-                      // ยังไม่เคย generate ภาษานี้ → generate ใหม่
-                      setTimeout(() => doGenerate(l), 100)
-                    }
-                  }}
-                    style={{ background: lang === l ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', fontWeight: lang === l ? '800' : '500', fontFamily: 'inherit', borderRight: l !== 'jp' ? '1px solid rgba(255,255,255,0.15)' : 'none' }}>
-                    {l === 'th' ? '🇹🇭' : l === 'en' ? '🇬🇧' : '🇯🇵'}
-                  </button>
-                ))}
-              </div>
               <button onClick={shareMyLocation} disabled={sharingLocation}
                 style={{ background: sharingLocation ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                 {sharingLocation ? '⏳' : '📍'}
@@ -1941,115 +1915,134 @@ export default function TripPage() {
             </div>
           )}
           <div style={{ fontSize: '11px', color: '#38BDF8', textAlign: 'center', marginTop: '10px' }}>
-            {isOwner ? 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อแก้ไข · กด ✨ เพื่อให้ AI Suggest · กด 🔗 เพื่อแชร์' : isGuest ? '👁️ ดูอย่างเดียว · สมัครสมาชิกเพื่อแก้ไข' : 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด 📝 เพื่อเพิ่ม note'}
+            {isOwner ? 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อแก้ไข · กด 🔗 เพื่อแชร์' : isGuest ? '👁️ ดูอย่างเดียว · สมัครสมาชิกเพื่อแก้ไข' : 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อเพิ่ม note'}
           </div>
 
-          {/* AI Chat Modal */}
-          {showChat && (
-            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: '600px', width: '100%', margin: '0 auto' }}>
-                {/* Chat Header */}
-                <div style={{ padding: '16px', background: 'linear-gradient(135deg,#0C4A6E,#1E40AF)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <button onClick={() => setShowChat(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '14px', fontFamily: 'inherit' }}>←</button>
-                  <div>
-                    <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>🤖 AI Travel Assistant</div>
-                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>{trip?.destination || 'Trip'} · ถามอะไรก็ได้</div>
-                  </div>
-                </div>
-                {/* Messages */}
-                <div style={{ flex: 1, overflow: 'auto', padding: '16px', background: '#0C1829', display: 'flex', flexDirection: 'column', gap: '12px' }} ref={el => { if (el) el.scrollTop = el.scrollHeight }}>
-                  {chatMessages.length === 0 && (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: 'rgba(255,255,255,0.3)' }}>
-                      <div style={{ fontSize: '48px', marginBottom: '12px' }}>🌏</div>
-                      <div style={{ fontSize: '14px', fontWeight: '600' }}>ถามอะไรก็ได้เกี่ยวกับทริปคุณ!</div>
-                      <div style={{ fontSize: '12px', marginTop: '8px', lineHeight: 1.6 }}>🍜 ร้านอาหารแนะนำ? · 🚃 เดินทางยังไง? · 💰 งบพอไหม?</div>
-                    </div>
-                  )}
-                  {chatMessages.map((msg, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                      <div style={{
-                        maxWidth: '80%', padding: '10px 14px', borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                        background: msg.role === 'user' ? 'linear-gradient(135deg,#0EA5E9,#3B82F6)' : 'rgba(255,255,255,0.08)',
-                        color: 'white', fontSize: '13px', lineHeight: 1.6, whiteSpace: 'pre-wrap'
-                      }}>{msg.text}</div>
-                    </div>
-                  ))}
-                  {chatLoading && (
-                    <div style={{ display: 'flex' }}>
-                      <div style={{ padding: '10px 14px', borderRadius: '16px 16px 16px 4px', background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
-                        ✨ กำลังคิด...
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {/* Input */}
-                <div style={{ padding: '12px', background: '#0F2744', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '8px' }}>
-                  <input value={chatInput} onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
-                    placeholder="ถามเกี่ยวกับทริป..."
-                    style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '10px 14px', color: 'white', fontSize: '14px', outline: 'none', fontFamily: 'inherit' }} />
-                  <button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()}
-                    style={{ background: 'linear-gradient(135deg,#0EA5E9,#3B82F6)', border: 'none', color: 'white', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontSize: '16px', fontFamily: 'inherit', opacity: chatLoading || !chatInput.trim() ? 0.4 : 1 }}>
-                    ➤
+          {/* Language Toggle at bottom */}
+          {plan && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '10px' }}>
+              <div style={{ display: 'flex', borderRadius: '10px', border: '1.5px solid rgba(14,165,233,0.15)', overflow: 'hidden', background: 'rgba(14,165,233,0.03)' }}>
+                {['th', 'en', 'jp'].map(l => (
+                  <button key={l} onClick={() => {
+                    if (l === lang) return
+                    setLang(l)
+                    if (plansByLang[l]) { setPlan(plansByLang[l]); setActiveDay(0) }
+                    else { setTimeout(() => doGenerate(l), 100) }
+                  }}
+                    style={{ background: lang === l ? '#0EA5E9' : 'transparent', color: lang === l ? 'white' : '#64748B', border: 'none', padding: '6px 14px', cursor: 'pointer', fontSize: '12px', fontWeight: lang === l ? '800' : '500', fontFamily: 'inherit', borderRight: l !== 'jp' ? '1px solid rgba(14,165,233,0.1)' : 'none' }}>
+                    {l === 'th' ? '🇹🇭 ไทย' : l === 'en' ? '🇬🇧 EN' : '🇯🇵 日本語'}
                   </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Documents Modal */}
-          {showDocs && (
-            <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowDocs(false) }}>
-              <div className="modal-sheet" style={{ maxHeight: '85vh', overflow: 'auto' }}>
-                <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
-                <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '8px' }}>📄 เอกสารและข้อมูลสำคัญ</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.03))', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '14px' }}>🔐</span>
-                  <span style={{ fontSize: '11px', color: '#065F46', fontWeight: '600' }}>เข้ารหัส AES-256 · เก็บเฉพาะในเครื่องคุณ · ไม่แชร์กับผู้อื่น</span>
-                </div>
-
-
-                {/* Add new doc */}
-                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                  <input value={docLabel} onChange={e => setDocLabel(e.target.value)} placeholder="ชื่อ (เช่น Booking Ref)"
-                    style={{ flex: 1, padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #BAE6FD', fontSize: '12px', fontFamily: 'inherit', outline: 'none' }} />
-                  <input value={docValue} onChange={e => setDocValue(e.target.value)} placeholder="ค่า (เช่น HK-12345)"
-                    onKeyDown={e => { if (e.key === 'Enter') addDoc() }}
-                    style={{ flex: 1, padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #BAE6FD', fontSize: '12px', fontFamily: 'inherit', outline: 'none' }} />
-                  <button onClick={addDoc}
-                    style={{ background: '#0EA5E9', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', fontFamily: 'inherit' }}>+</button>
-                </div>
-
-                {/* Document list */}
-                {tripDocs.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '24px', color: '#94A3B8', fontSize: '13px' }}>
-                    ยังไม่มีเอกสาร · เพิ่มข้อมูลด้านบน
-                    <div style={{ marginTop: '10px', fontSize: '12px', color: '#CBD5E1' }}>
-                      📝 ตัวอย่าง: Booking Ref, Passport No., เบอร์ฉุกเฉิน, ประกันภัย, WiFi Password
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {tripDocs.map((doc, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'rgba(14,165,233,0.04)', borderRadius: '10px', border: '1px solid rgba(14,165,233,0.08)' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '600' }}>{doc.label}</div>
-                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#0C4A6E', fontFamily: 'monospace', marginTop: '2px', wordBreak: 'break-all' }}>{doc.value}</div>
-                        </div>
-                        <button onClick={() => { navigator.clipboard?.writeText(doc.value); }}
-                          style={{ background: 'rgba(14,165,233,0.1)', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}>📋</button>
-                        <button onClick={() => removeDoc(i)}
-                          style={{ background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px', color: '#EF4444' }}>✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <button className="btn-ghost" style={{ width: '100%', marginTop: '16px' }} onClick={() => setShowDocs(false)}>ปิด</button>
+                ))}
               </div>
             </div>
           )}
         </div>
-      </div >
+
+        {/* AI Chat Modal */}
+        {showChat && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: '600px', width: '100%', margin: '0 auto' }}>
+              {/* Chat Header */}
+              <div style={{ padding: '16px', background: 'linear-gradient(135deg,#0C4A6E,#1E40AF)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button onClick={() => setShowChat(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '14px', fontFamily: 'inherit' }}>←</button>
+                <div>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>🤖 AI Travel Assistant</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>{trip?.destination || 'Trip'} · ถามอะไรก็ได้</div>
+                </div>
+              </div>
+              {/* Messages */}
+              <div style={{ flex: 1, overflow: 'auto', padding: '16px', background: '#0C1829', display: 'flex', flexDirection: 'column', gap: '12px' }} ref={el => { if (el) el.scrollTop = el.scrollHeight }}>
+                {chatMessages.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: 'rgba(255,255,255,0.3)' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '12px' }}>🌏</div>
+                    <div style={{ fontSize: '14px', fontWeight: '600' }}>ถามอะไรก็ได้เกี่ยวกับทริปคุณ!</div>
+                    <div style={{ fontSize: '12px', marginTop: '8px', lineHeight: 1.6 }}>🍜 ร้านอาหารแนะนำ? · 🚃 เดินทางยังไง? · 💰 งบพอไหม?</div>
+                  </div>
+                )}
+                {chatMessages.map((msg, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div style={{
+                      maxWidth: '80%', padding: '10px 14px', borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                      background: msg.role === 'user' ? 'linear-gradient(135deg,#0EA5E9,#3B82F6)' : 'rgba(255,255,255,0.08)',
+                      color: 'white', fontSize: '13px', lineHeight: 1.6, whiteSpace: 'pre-wrap'
+                    }}>{msg.text}</div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div style={{ display: 'flex' }}>
+                    <div style={{ padding: '10px 14px', borderRadius: '16px 16px 16px 4px', background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>
+                      ✨ กำลังคิด...
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Input */}
+              <div style={{ padding: '12px', background: '#0F2744', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '8px' }}>
+                <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
+                  placeholder="ถามเกี่ยวกับทริป..."
+                  style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '10px 14px', color: 'white', fontSize: '14px', outline: 'none', fontFamily: 'inherit' }} />
+                <button onClick={sendChatMessage} disabled={chatLoading || !chatInput.trim()}
+                  style={{ background: 'linear-gradient(135deg,#0EA5E9,#3B82F6)', border: 'none', color: 'white', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontSize: '16px', fontFamily: 'inherit', opacity: chatLoading || !chatInput.trim() ? 0.4 : 1 }}>
+                  ➤
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Documents Modal */}
+        {showDocs && (
+          <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowDocs(false) }}>
+            <div className="modal-sheet" style={{ maxHeight: '85vh', overflow: 'auto' }}>
+              <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
+              <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '8px' }}>📄 เอกสารและข้อมูลสำคัญ</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.03))', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)', marginBottom: '14px' }}>
+                <span style={{ fontSize: '14px' }}>🔐</span>
+                <span style={{ fontSize: '11px', color: '#065F46', fontWeight: '600' }}>เข้ารหัส AES-256 · เก็บเฉพาะในเครื่องคุณ · ไม่แชร์กับผู้อื่น</span>
+              </div>
+
+
+              {/* Add new doc */}
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                <input value={docLabel} onChange={e => setDocLabel(e.target.value)} placeholder="ชื่อ (เช่น Booking Ref)"
+                  style={{ flex: 1, padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #BAE6FD', fontSize: '12px', fontFamily: 'inherit', outline: 'none' }} />
+                <input value={docValue} onChange={e => setDocValue(e.target.value)} placeholder="ค่า (เช่น HK-12345)"
+                  onKeyDown={e => { if (e.key === 'Enter') addDoc() }}
+                  style={{ flex: 1, padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #BAE6FD', fontSize: '12px', fontFamily: 'inherit', outline: 'none' }} />
+                <button onClick={addDoc}
+                  style={{ background: '#0EA5E9', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', fontFamily: 'inherit' }}>+</button>
+              </div>
+
+              {/* Document list */}
+              {tripDocs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px', color: '#94A3B8', fontSize: '13px' }}>
+                  ยังไม่มีเอกสาร · เพิ่มข้อมูลด้านบน
+                  <div style={{ marginTop: '10px', fontSize: '12px', color: '#CBD5E1' }}>
+                    📝 ตัวอย่าง: Booking Ref, Passport No., เบอร์ฉุกเฉิน, ประกันภัย, WiFi Password
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {tripDocs.map((doc, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'rgba(14,165,233,0.04)', borderRadius: '10px', border: '1px solid rgba(14,165,233,0.08)' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '600' }}>{doc.label}</div>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: '#0C4A6E', fontFamily: 'monospace', marginTop: '2px', wordBreak: 'break-all' }}>{doc.value}</div>
+                      </div>
+                      <button onClick={() => { navigator.clipboard?.writeText(doc.value); }}
+                        style={{ background: 'rgba(14,165,233,0.1)', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}>📋</button>
+                      <button onClick={() => removeDoc(i)}
+                        style={{ background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px', color: '#EF4444' }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button className="btn-ghost" style={{ width: '100%', marginTop: '16px' }} onClick={() => setShowDocs(false)}>ปิด</button>
+            </div>
+          </div>
+        )}
+      </div>
     )
   }
 

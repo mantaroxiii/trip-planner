@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
     try {
         const apiKey = process.env.GEMINI_API_KEY
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -43,9 +43,14 @@ export default async function handler(req, res) {
             })
         })
         const data = await r.json()
+        if (!r.ok) {
+            console.error('Gemini API error:', JSON.stringify(data))
+            return res.status(200).json({ reply: `❌ API error: ${data?.error?.message || 'unknown'}` })
+        }
         const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'ขอโทษครับ ไม่สามารถตอบได้ในตอนนี้'
         return res.status(200).json({ reply })
     } catch (e) {
+        console.error('Chat error:', e)
         return res.status(500).json({ error: e.message })
     }
 }
