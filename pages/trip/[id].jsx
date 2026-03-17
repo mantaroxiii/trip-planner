@@ -566,6 +566,31 @@ export default function TripPage() {
     })
   }
 
+  // Google Maps export per day
+  const exportDayToGoogleMaps = (dayIdx) => {
+    const day = plan?.days?.[dayIdx]
+    if (!day) return
+    const locs = (day.events || []).filter(ev => ev.lat && ev.lng).map(ev => ({ lat: ev.lat, lng: ev.lng, title: ev.title }))
+    if (locs.length === 0) return alert('ยังไม่มีพิกัดสถานที่ในวันนี้ กดแก้ไข ✏️ เพื่อใส่ lat/lng ก่อน')
+    // Chunk into groups of max 10
+    const CHUNK = 10
+    const chunks = []
+    for (let i = 0; i < locs.length; i += CHUNK) chunks.push(locs.slice(i, i + CHUNK))
+    chunks.forEach((chunk, ci) => {
+      if (chunk.length === 1) {
+        window.open(`https://www.google.com/maps/search/?api=1&query=${chunk[0].lat},${chunk[0].lng}`, '_blank')
+        return
+      }
+      const origin = `${chunk[0].lat},${chunk[0].lng}`
+      const dest = `${chunk[chunk.length - 1].lat},${chunk[chunk.length - 1].lng}`
+      const waypoints = chunk.slice(1, -1).map(l => `${l.lat},${l.lng}`).join('|')
+      let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`
+      if (waypoints) url += `&waypoints=${waypoints}`
+      setTimeout(() => window.open(url, '_blank'), ci * 300)
+    })
+    if (chunks.length > 1) alert(`มี ${locs.length} จุด แบ่งเป็น ${chunks.length} ช่วง เปิด Google Maps ${chunks.length} แท็บ`)
+  }
+
   // AI Suggestion
   const fetchSuggestions = async (dayIdx, evIdx) => {
     const key = `${dayIdx}-${evIdx}`
@@ -1453,6 +1478,13 @@ export default function TripPage() {
                   <div style={{ fontSize: '18px', fontWeight: '800' }}>{day.emoji || '📍'} {day.title}</div>
                   {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
                 </div>
+                {/* Google Maps export */}
+                {(day.events || []).some(ev => ev.lat && ev.lng) && (
+                  <button onClick={() => exportDayToGoogleMaps(activeDay)}
+                    style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)', color: 'white', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                    🗺️ Google Maps
+                  </button>
+                )}
               </div>
               {/* ─── WEATHER BANNER ─── */}
               {(() => {
