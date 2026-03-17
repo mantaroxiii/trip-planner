@@ -2228,19 +2228,27 @@ export default function TripPage() {
                       </div>
                     )}
                     {/* Show note text + images inline (read-only) when not editing */}
-                    {!isEditing && (noteMap[key] || noteImages[key]?.length > 0) && (
-                      <div style={{ borderTop: `1px solid ${light}`, padding: '8px 12px 10px' }}>
-                        {noteMap[key] && <div style={{ fontSize: '12px', color: '#64748B', lineHeight: 1.5 }}>📝 {noteMap[key]}</div>}
-                        {noteImages[key]?.length > 0 && (
-                          <div style={{ marginTop: '6px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }}>
-                            {(Array.isArray(noteImages[key]) ? noteImages[key] : [noteImages[key]]).map((img, idx) => (
-                              <img key={idx} src={img} alt="" onClick={() => setPreviewImage(img)}
-                                style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `1.5px solid ${col}33`, cursor: 'pointer' }} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {(() => {
+                      const imgs = noteImages[key] || ev.images || []
+                      const hasContent = noteMap[key] || (Array.isArray(imgs) && imgs.length > 0)
+                      if (isEditing || !hasContent) return null
+                      return (
+                        <div style={{ borderTop: `1px solid ${light}`, padding: '8px 12px 10px' }} onClick={e => e.stopPropagation()}>
+                          {noteMap[key] && <div style={{ fontSize: '12px', color: '#64748B', lineHeight: 1.5 }}>📝 {noteMap[key]}</div>}
+                          {Array.isArray(imgs) && imgs.length > 0 && (
+                            <div>
+                              <div style={{ fontSize: '10px', color: '#94A3B8', marginBottom: '4px', marginTop: '4px' }}>📷 {imgs.length} รูป · กดเพื่อดูขนาดเต็ม</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }}>
+                                {imgs.map((img, idx) => (
+                                  <img key={idx} src={img} alt="" onClick={() => setPreviewImage(img)}
+                                    style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `1.5px solid ${col}33`, cursor: 'pointer' }} />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
