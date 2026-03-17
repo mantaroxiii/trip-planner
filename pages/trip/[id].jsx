@@ -77,8 +77,7 @@ export default function TripPage() {
   const [editTitle, setEditTitle] = useState('')
   const [editTime, setEditTime] = useState('')
   const [editDetail, setEditDetail] = useState('')
-  const [editLat, setEditLat] = useState('')
-  const [editLng, setEditLng] = useState('')
+  const [editLocation, setEditLocation] = useState('')
 
   // AI Suggestion
   const [suggestingKey, setSuggestingKey] = useState(null)
@@ -554,8 +553,7 @@ export default function TripPage() {
       title: editTitle,
       time: editTime,
       detail: editDetail,
-      lat: editLat ? parseFloat(editLat) : undefined,
-      lng: editLng ? parseFloat(editLng) : undefined,
+      location: editLocation || undefined,
     }
     setPlan(newPlan)
     setEditingKey(null)
@@ -570,20 +568,19 @@ export default function TripPage() {
   const exportDayToGoogleMaps = (dayIdx) => {
     const day = plan?.days?.[dayIdx]
     if (!day) return
-    const locs = (day.events || []).filter(ev => ev.lat && ev.lng).map(ev => ({ lat: ev.lat, lng: ev.lng, title: ev.title }))
-    if (locs.length === 0) return alert('ยังไม่มีพิกัดสถานที่ในวันนี้ กดแก้ไข ✏️ เพื่อใส่ lat/lng ก่อน')
-    // Chunk into groups of max 10
+    const locs = (day.events || []).filter(ev => ev.location).map(ev => ev.location)
+    if (locs.length === 0) return alert('ยังไม่มีสถานที่ในวันนี้ กดแก้ไข ✏️ เพื่อใส่สถานที่ก่อน')
     const CHUNK = 10
     const chunks = []
     for (let i = 0; i < locs.length; i += CHUNK) chunks.push(locs.slice(i, i + CHUNK))
     chunks.forEach((chunk, ci) => {
       if (chunk.length === 1) {
-        window.open(`https://www.google.com/maps/search/?api=1&query=${chunk[0].lat},${chunk[0].lng}`, '_blank')
+        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(chunk[0])}`, '_blank')
         return
       }
-      const origin = `${chunk[0].lat},${chunk[0].lng}`
-      const dest = `${chunk[chunk.length - 1].lat},${chunk[chunk.length - 1].lng}`
-      const waypoints = chunk.slice(1, -1).map(l => `${l.lat},${l.lng}`).join('|')
+      const origin = encodeURIComponent(chunk[0])
+      const dest = encodeURIComponent(chunk[chunk.length - 1])
+      const waypoints = chunk.slice(1, -1).map(l => encodeURIComponent(l)).join('|')
       let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`
       if (waypoints) url += `&waypoints=${waypoints}`
       setTimeout(() => window.open(url, '_blank'), ci * 300)
@@ -1479,7 +1476,7 @@ export default function TripPage() {
                   {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
                 </div>
                 {/* Google Maps export */}
-                {(day.events || []).some(ev => ev.lat && ev.lng) && (
+                {(day.events || []).some(ev => ev.location) && (
                   <button onClick={() => exportDayToGoogleMaps(activeDay)}
                     style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)', color: 'white', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                     🗺️ Google Maps
@@ -1529,10 +1526,7 @@ export default function TripPage() {
                           <input className="trip-input" value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="ชื่อ activity" style={{ flex: 1, padding: '7px 10px', fontSize: '13px' }} />
                         </div>
                         <input className="trip-input" value={editDetail} onChange={e => setEditDetail(e.target.value)} placeholder="รายละเอียด (optional)" style={{ padding: '7px 10px', fontSize: '12px' }} />
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <input className="trip-input" type="number" step="any" value={editLat} onChange={e => setEditLat(e.target.value)} placeholder="📍 lat (เช่น 35.6586)" style={{ flex: 1, padding: '7px 10px', fontSize: '11px' }} />
-                          <input className="trip-input" type="number" step="any" value={editLng} onChange={e => setEditLng(e.target.value)} placeholder="📍 lng (เช่น 139.7454)" style={{ flex: 1, padding: '7px 10px', fontSize: '11px' }} />
-                        </div>
+                        <input className="trip-input" value={editLocation} onChange={e => setEditLocation(e.target.value)} placeholder="📍 สถานที่ (ชื่อร้าน, ที่อยู่, หรือพิกัด)" style={{ padding: '7px 10px', fontSize: '12px' }} />
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button className="btn-ghost" style={{ flex: 1, padding: '7px' }} onClick={() => setEditingKey(null)}>ยกเลิก</button>
                           <button className="btn-primary" style={{ flex: 2, padding: '7px', fontSize: '13px' }} onClick={() => saveInlineEdit(activeDay, ei)}>บันทึก</button>
@@ -1549,8 +1543,8 @@ export default function TripPage() {
                           {ev.detail && <div style={{ fontSize: '12px', color: ev.warning ? '#d97706' : '#38BDF8', marginTop: '2px' }}>{ev.detail}</div>}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
                             <span style={{ display: 'inline-block', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: light, color: col, fontWeight: '700', border: `1px solid ${col}33` }}>{ev.type}</span>
-                            {ev.lat && ev.lng && (
-                              <a href={`https://www.google.com/maps/search/?api=1&query=${ev.lat},${ev.lng}`} target="_blank" rel="noopener noreferrer"
+                            {ev.location && (
+                              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.location)}`} target="_blank" rel="noopener noreferrer"
                                 onClick={e => e.stopPropagation()}
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: 'rgba(16,185,129,0.1)', color: '#10B981', fontWeight: '700', border: '1px solid rgba(16,185,129,0.2)', textDecoration: 'none' }}>
                                 📍 Maps
@@ -1600,7 +1594,7 @@ export default function TripPage() {
                             <>
                               <button className="icon-btn" title="AI Suggestion" onClick={() => { setSuggestions([]); fetchSuggestions(activeDay, ei) }}
                                 style={{ fontSize: '15px', opacity: 0.7 }}>✨</button>
-                              <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || ''); setEditLat(ev.lat || ''); setEditLng(ev.lng || '') }}
+                              <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || ''); setEditLocation(ev.location || '') }}
                                 style={{ fontSize: '15px', opacity: 0.7 }}>✏️</button>
                             </>
                           )}
