@@ -160,7 +160,10 @@ export default function TripPage() {
 
   // AI Chat
   const [showChat, setShowChat] = useState(false)
-  const [chatMessages, setChatMessages] = useState([])
+  const [chatMessages, setChatMessages] = useState(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem(`chatHistory-${id}`)) || [] } catch { return [] }
+  })
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
 
@@ -746,7 +749,7 @@ export default function TripPage() {
   const sendChatMessage = async () => {
     if (!chatInput.trim() || chatLoading) return
     const userMsg = { role: 'user', text: chatInput.trim() }
-    setChatMessages(prev => [...prev, userMsg])
+    setChatMessages(prev => { const next = [...prev, userMsg]; localStorage.setItem(`chatHistory-${id}`, JSON.stringify(next)); return next })
     setChatInput('')
     setChatLoading(true)
     try {
@@ -761,9 +764,10 @@ export default function TripPage() {
         })
       })
       const data = await res.json()
-      setChatMessages(prev => [...prev, { role: 'assistant', text: data.reply || 'ขอโทษครับ เกิดข้อผิดพลาด' }])
+      const assistantMsg = { role: 'assistant', text: data.reply || 'ขอโทษครับ เกิดข้อผิดพลาด' }
+      setChatMessages(prev => { const next = [...prev, assistantMsg]; localStorage.setItem(`chatHistory-${id}`, JSON.stringify(next)); return next })
     } catch (e) {
-      setChatMessages(prev => [...prev, { role: 'assistant', text: '❌ เกิดข้อผิดพลาด ลองใหม่อีกครั้ง' }])
+      setChatMessages(prev => { const next = [...prev, { role: 'assistant', text: '❌ เกิดข้อผิดพลาด ลองใหม่อีกครั้ง' }]; localStorage.setItem(`chatHistory-${id}`, JSON.stringify(next)); return next })
     }
     setChatLoading(false)
   }
@@ -2170,10 +2174,14 @@ export default function TripPage() {
               {/* Chat Header */}
               <div style={{ padding: '16px', background: 'linear-gradient(135deg,#0C4A6E,#1E40AF)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
                 <button onClick={() => setShowChat(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '14px', fontFamily: 'inherit' }}>←</button>
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>🤖 AI Travel Assistant</div>
                   <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>{trip?.destination || 'Trip'} · ถามอะไรก็ได้</div>
                 </div>
+                {chatMessages.length > 0 && (
+                  <button onClick={() => { if (confirm('ล้างประวัติแชท?')) { setChatMessages([]); localStorage.removeItem(`chatHistory-${id}`) } }}
+                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', borderRadius: '8px', padding: '4px 10px', cursor: 'pointer', fontSize: '11px', fontFamily: 'inherit' }}>🗑️ ล้างแชท</button>
+                )}
               </div>
               {/* Messages */}
               <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px', background: '#0C1829', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 }} ref={el => { if (el) el.scrollTop = el.scrollHeight }}>
