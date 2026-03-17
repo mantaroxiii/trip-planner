@@ -561,8 +561,61 @@ export default function TripPage() {
     if (plan) { setConfirmGenerate(true) } else { doGenerate() }
   }
 
+  // Parse time string like "09:00", "9.30", "10:00-12:00" -> minutes from midnight for sorting
+  const parseTimeForSort = (timeStr) => {
+    if (!timeStr) return 9999 // no time = end
+    const match = timeStr.match(/(\d{1,2})[:.：]?(\d{2})?/)
+    if (!match) return 9999
+    return parseInt(match[1]) * 60 + parseInt(match[2] || '0')
+  }
+
+  // Sort events in a day by time + remap notes/images/checked keys
+  const sortEventsByTime = (newPlan, dayIdx) => {
+    const events = newPlan.days[dayIdx].events
+    if (!events || events.length <= 1) return newPlan
+
+    // Build old index → event mapping with associated data
+    const oldData = events.map((ev, i) => {
+      const oldKey = dayIdx + '-' + i
+      return { event: ev, oldKey, note: noteMap[oldKey], images: noteImages[oldKey], checked: checked[oldKey] }
+    })
+
+    // Sort by time
+    oldData.sort((a, b) => parseTimeForSort(a.event.time) - parseTimeForSort(b.event.time))
+
+    // Rebuild events array + remap notes/checked/images
+    const newNotes = { ...noteMap }
+    const newImages = { ...noteImages }
+    const newChecked = { ...checked }
+
+    // Clear old keys for this day first
+    events.forEach((_, i) => {
+      const k = dayIdx + '-' + i
+      delete newNotes[k]; delete newImages[k]; delete newChecked[k]
+    })
+
+    // Set new keys
+    oldData.forEach((item, newIdx) => {
+      const newKey = dayIdx + '-' + newIdx
+      newPlan.days[dayIdx].events[newIdx] = item.event
+      if (item.note) newNotes[newKey] = item.note
+      if (item.images) newImages[newKey] = item.images
+      if (item.checked) newChecked[newKey] = item.checked
+    })
+
+    // Update state
+    setNoteMap(newNotes)
+    setNoteImages(newImages)
+    setChecked(newChecked)
+    localStorage.setItem(`notes-${id}`, JSON.stringify(newNotes))
+    localStorage.setItem(`noteImages-${id}`, JSON.stringify(newImages))
+    localStorage.setItem(`checked-${id}`, JSON.stringify(newChecked))
+
+    return newPlan
+  }
+
   const saveInlineEdit = async (dayIdx, evIdx) => {
-    const newPlan = JSON.parse(JSON.stringify(plan))
+    let newPlan = JSON.parse(JSON.stringify(plan))
     newPlan.days[dayIdx].events[evIdx] = {
       ...newPlan.days[dayIdx].events[evIdx],
       title: editTitle,
@@ -570,11 +623,15 @@ export default function TripPage() {
       detail: editDetail,
       location: editLocation || undefined,
     }
-    // Save note
+    // Save note before sorting (so it's in noteMap for remapping)
     const key = dayIdx + '-' + evIdx
     if (editNote !== (noteMap[key] || '')) {
-      saveNote(key, editNote)
+      const next = { ...noteMap, [key]: editNote }
+      setNoteMap(next)
+      localStorage.setItem(`notes-${id}`, JSON.stringify(next))
     }
+    // Sort events by time
+    newPlan = sortEventsByTime(newPlan, dayIdx)
     setPlan(newPlan)
     setEditingKey(null)
     await fetch(`/api/trips/${id}`, {
