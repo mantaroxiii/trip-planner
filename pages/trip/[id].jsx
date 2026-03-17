@@ -584,6 +584,26 @@ export default function TripPage() {
     })
   }
 
+  const addNewEvent = async (dayIdx) => {
+    const newPlan = JSON.parse(JSON.stringify(plan))
+    const newEvent = { time: '', title: '', detail: '', type: 'กิจกรรม' }
+    newPlan.days[dayIdx].events.push(newEvent)
+    setPlan(newPlan)
+    const newIdx = newPlan.days[dayIdx].events.length - 1
+    const key = dayIdx + '-' + newIdx
+    setEditingKey(key)
+    setEditTitle('')
+    setEditTime('')
+    setEditDetail('')
+    setEditLocation('')
+    setEditNote('')
+    await fetch(`/api/trips/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_json: newPlan }),
+    })
+  }
+
   // Share my location
   const shareMyLocation = async () => {
     if (!session) return alert('กรุณาเข้าสู่ระบบก่อน')
@@ -1928,6 +1948,15 @@ export default function TripPage() {
                   </div>
                 )
               })}
+              {/* Add New Event Button */}
+              {(isOwner || !isGuest) && (
+                <button onClick={() => addNewEvent(activeDay)}
+                  style={{ width: '100%', padding: '12px', background: `${col}10`, border: `1.5px dashed ${col}44`, borderRadius: '12px', color: col, fontSize: '13px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s', marginTop: '4px' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = `${col}20`; e.currentTarget.style.borderColor = `${col}88` }}
+                  onMouseLeave={e => { e.currentTarget.style.background = `${col}10`; e.currentTarget.style.borderColor = `${col}44` }}>
+                  + เพิ่มกิจกรรม
+                </button>
+              )}
             </div>
           </div>
 
