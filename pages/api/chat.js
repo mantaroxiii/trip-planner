@@ -33,13 +33,17 @@ export default async function handler(req, res) {
 
     try {
         const apiKey = process.env.GEMINI_API_KEY
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 system_instruction: { parts: [{ text: systemPrompt }] },
                 contents,
-                generationConfig: { temperature: 0.8, maxOutputTokens: 8192 }
+                generationConfig: {
+                    temperature: 0.8,
+                    maxOutputTokens: 16384,
+                    thinkingConfig: { thinkingBudget: 1024 }
+                }
             })
         })
         const data = await r.json()
@@ -47,9 +51,9 @@ export default async function handler(req, res) {
             console.error('Gemini API error:', JSON.stringify(data))
             return res.status(200).json({ reply: `❌ API error: ${data?.error?.message || 'unknown'}` })
         }
-        // Extract all text parts from response
+        // Extract only non-thinking text parts from response
         const parts = data?.candidates?.[0]?.content?.parts || []
-        const reply = parts.map(p => p.text).filter(Boolean).join('\n') || 'ขอโทษครับ ไม่สามารถตอบได้ในตอนนี้'
+        const reply = parts.filter(p => !p.thought && p.text).map(p => p.text).join('\n') || 'ขอโทษครับ ไม่สามารถตอบได้ในตอนนี้'
         const finishReason = data?.candidates?.[0]?.finishReason
         if (finishReason && finishReason !== 'STOP') {
             console.warn('Chat finish reason:', finishReason)
