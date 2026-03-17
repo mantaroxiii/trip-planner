@@ -2092,9 +2092,8 @@ export default function TripPage() {
                     lastSaveTimeRef.current = Date.now()
                     await fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
                   }}
-                    style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', color: 'white', borderRadius: '10px', padding: '6px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', fontFamily: 'inherit', flexShrink: 0 }}
-                    title="ลบวันนี้">
-                    🗑️
+                    style={{ background: 'rgba(239,68,68,0.25)', border: '1px solid rgba(239,68,68,0.4)', color: '#FEE2E2', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', fontFamily: 'inherit', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    🗑️ ลบวัน
                   </button>
                 )}
               </div>
