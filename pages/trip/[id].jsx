@@ -728,6 +728,18 @@ export default function TripPage() {
     return newPlan
   }
 
+  const sortDayByTime = async () => {
+    let newPlan = JSON.parse(JSON.stringify(plan))
+    newPlan = sortEventsByTime(newPlan, activeDay)
+    setPlan(newPlan)
+    lastSaveTimeRef.current = Date.now()
+    await fetch(`/api/trips/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_json: newPlan }),
+    })
+  }
+
   const saveInlineEdit = async (dayIdx, evIdx) => {
     let newPlan = JSON.parse(JSON.stringify(plan))
     const userName = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'Unknown'
@@ -2034,7 +2046,14 @@ export default function TripPage() {
                 {(day.events || []).some(ev => ev.location) && (
                   <button onClick={() => exportDayToGoogleMaps(activeDay)}
                     style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)', color: 'white', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                    🗺️ Google Maps
+                    🗺️ Maps
+                  </button>
+                )}
+                {(isOwner || !isGuest) && (
+                  <button onClick={sortDayByTime}
+                    style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.3)', color: 'white', borderRadius: '10px', padding: '6px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', fontFamily: 'inherit', flexShrink: 0 }}
+                    title="เรียงกิจกรรมตามเวลา">
+                    🔄
                   </button>
                 )}
               </div>
@@ -2163,10 +2182,10 @@ export default function TripPage() {
                     ) : (
                       <div onClick={() => { if (!isGuest) toggleCheck(key) }} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '11px', cursor: isGuest ? 'default' : 'pointer' }}>
                         {(isOwner || !isGuest) && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', flexShrink: 0, paddingTop: '2px' }} onClick={e => e.stopPropagation()}>
-                            {ei > 0 && <button className="icon-btn" onClick={() => moveEvent(activeDay, ei, ei - 1)} style={{ fontSize: '10px', padding: '1px', opacity: 0.4 }} title="ย้ายขึ้น">▲</button>}
-                            <span style={{ fontSize: '12px', cursor: 'grab', opacity: 0.25, textAlign: 'center', lineHeight: 1 }} title="ลากเพื่อย้าย">⠀⨀⠀</span>
-                            {ei < (day.events || []).length - 1 && <button className="icon-btn" onClick={() => moveEvent(activeDay, ei, ei + 1)} style={{ fontSize: '10px', padding: '1px', opacity: 0.4 }} title="ย้ายลง">▼</button>}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0, paddingTop: '2px', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                            {ei > 0 && <button className="icon-btn" onClick={() => moveEvent(activeDay, ei, ei - 1)} style={{ fontSize: '10px', padding: '2px 4px', opacity: 0.5, lineHeight: 1 }} title="ย้ายขึ้น">▲</button>}
+                            <span style={{ fontSize: '14px', cursor: 'grab', opacity: 0.2, textAlign: 'center', lineHeight: 1, userSelect: 'none' }} title="ลากเพื่อย้าย">☰</span>
+                            {ei < (day.events || []).length - 1 && <button className="icon-btn" onClick={() => moveEvent(activeDay, ei, ei + 1)} style={{ fontSize: '10px', padding: '2px 4px', opacity: 0.5, lineHeight: 1 }} title="ย้ายลง">▼</button>}
                           </div>
                         )}
                         <div style={{ fontSize: '11px', color: '#38BDF8', fontFamily: 'monospace', width: '36px', flexShrink: 0, paddingTop: '3px', fontWeight: '700' }}>{ev.time}</div>
