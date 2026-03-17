@@ -1,5 +1,7 @@
 import { getAuthUser, createAdminClient } from '../../../lib/supabaseServer'
 
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'nathakorn.ted@gmail.com').split(',').map(e => e.trim().toLowerCase())
+
 export default async function handler(req, res) {
   const user = await getAuthUser(req)
   const { id } = req.query
@@ -31,7 +33,9 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     // Anyone can view a trip via share link (GET)
     // If logged in user is not owner and not yet a member → auto-join
-    if (user && !isOwner && !isMember && !user.is_anonymous) {
+    // BUT skip auto-join if admin is viewing in admin mode
+    const isAdminView = req.query.adminView === 'true' && ADMIN_EMAILS.includes(user?.email?.toLowerCase())
+    if (user && !isOwner && !isMember && !user.is_anonymous && !isAdminView) {
       await admin.from('trip_members').insert({
         trip_id: id,
         user_id: user.id,
@@ -64,7 +68,7 @@ export default async function handler(req, res) {
 
     return res.json({
       trip,
-      role: isOwner ? 'owner' : isMember ? 'member' : 'viewer',
+      role: isOwner ? 'owner' : isMember ? 'member' : isAdminView ? 'admin-viewer' : 'viewer',
       members,
     })
   }

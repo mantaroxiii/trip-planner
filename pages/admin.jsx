@@ -147,7 +147,7 @@ export default function AdminPage() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {filteredTrips.map((trip, i) => (
                             <div key={trip.id}
-                                onClick={() => router.push(`/trip/${trip.id}`)}
+                                onClick={() => router.push(`/trip/${trip.id}?adminView=true`)}
                                 style={{
                                     background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '14px',
                                     padding: '14px 16px', cursor: 'pointer', transition: 'all 0.2s',

@@ -356,7 +356,8 @@ export default function TripPage() {
   const loadTrip = async () => {
     const headers = {}
     if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
-    const res = await fetch(`/api/trips/${id}`, { headers })
+    const adminParam = router.query.adminView === 'true' ? '?adminView=true' : ''
+    const res = await fetch(`/api/trips/${id}${adminParam}`, { headers })
     if (!res.ok) { router.replace('/trips'); return }
     const { trip: t, role, members: m } = await res.json()
     setTrip(t)
