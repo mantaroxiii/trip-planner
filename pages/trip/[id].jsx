@@ -78,6 +78,7 @@ export default function TripPage() {
   const [editTime, setEditTime] = useState('')
   const [editDetail, setEditDetail] = useState('')
   const [editLocation, setEditLocation] = useState('')
+  const [editNote, setEditNote] = useState('')
 
   // AI Suggestion
   const [suggestingKey, setSuggestingKey] = useState(null)
@@ -559,7 +560,6 @@ export default function TripPage() {
     if (plan) { setConfirmGenerate(true) } else { doGenerate() }
   }
 
-  // Inline edit save
   const saveInlineEdit = async (dayIdx, evIdx) => {
     const newPlan = JSON.parse(JSON.stringify(plan))
     newPlan.days[dayIdx].events[evIdx] = {
@@ -568,6 +568,11 @@ export default function TripPage() {
       time: editTime,
       detail: editDetail,
       location: editLocation || undefined,
+    }
+    // Save note
+    const key = dayIdx + '-' + evIdx
+    if (editNote !== (noteMap[key] || '')) {
+      saveNote(key, editNote)
     }
     setPlan(newPlan)
     setEditingKey(null)
@@ -1667,7 +1672,7 @@ export default function TripPage() {
                 const isEditing = editingKey === key
                 return (
                   <div key={ei} className="event-card" style={{ opacity: isDone ? .55 : 1 }}>
-                    {isEditing && isOwner ? (
+                    {isEditing && (isOwner || !isGuest) ? (
                       <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <input className="trip-input" value={editTime} onChange={e => setEditTime(e.target.value)} placeholder="เวลา" style={{ width: '80px', padding: '7px 10px', fontSize: '12px' }} />
@@ -1675,8 +1680,61 @@ export default function TripPage() {
                         </div>
                         <input className="trip-input" value={editDetail} onChange={e => setEditDetail(e.target.value)} placeholder="รายละเอียด (optional)" style={{ padding: '7px 10px', fontSize: '12px' }} />
                         <input className="trip-input" value={editLocation} onChange={e => setEditLocation(e.target.value)} placeholder="📍 สถานที่ (ชื่อร้าน, ที่อยู่, หรือพิกัด)" style={{ padding: '7px 10px', fontSize: '12px' }} />
+                        <textarea className="trip-input" value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="📝 Note (เพิ่มเติม, เช่น ต้องจองล่วงหน้า)" rows={2} style={{ padding: '7px 10px', fontSize: '12px', resize: 'none' }} />
+                        {/* Image attachments */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <label style={{ fontSize: '11px', color: col, fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', background: `${col}15`, border: `1px solid ${col}33`, borderRadius: '8px', padding: '4px 10px' }}>
+                            🖼️ แนบรูป
+                            <input type="file" accept="image/*" multiple style={{ display: 'none' }}
+                              onChange={e => {
+                                Array.from(e.target.files).forEach(file => {
+                                  const reader = new FileReader()
+                                  reader.onload = ev => addPendingImage(key, ev.target.result)
+                                  reader.readAsDataURL(file)
+                                })
+                                e.target.value = ''
+                              }} />
+                          </label>
+                          {(pendingImages[key]?.length > 0) && (
+                            <button onClick={() => saveNoteImages(key)}
+                              style={{ fontSize: '11px', color: 'white', fontWeight: '700', cursor: 'pointer', background: '#10B981', border: 'none', borderRadius: '8px', padding: '4px 12px', fontFamily: 'inherit' }}>
+                              💾 Save ({pendingImages[key].length} รูป)
+                            </button>
+                          )}
+                        </div>
+                        {/* Pending images */}
+                        {pendingImages[key]?.length > 0 && (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }}>
+                            {pendingImages[key].map((img, idx) => (
+                              <div key={idx} style={{ position: 'relative' }}>
+                                <img src={img} alt="" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `2px dashed ${col}55`, opacity: 0.7 }} onClick={() => setPreviewImage(img)} />
+                                <span onClick={() => removePendingImage(key, idx)}
+                                  style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', color: 'white', borderRadius: '99px', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: '800' }}>✕</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Saved images */}
+                        {noteImages[key]?.length > 0 && (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }}>
+                            {(Array.isArray(noteImages[key]) ? noteImages[key] : [noteImages[key]]).map((img, idx) => (
+                              <div key={idx} style={{ position: 'relative', cursor: 'pointer' }}>
+                                <img src={img} alt="" onClick={() => setPreviewImage(img)}
+                                  style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `1.5px solid ${col}33` }} />
+                                <span onClick={() => removeNoteImage(key, idx)}
+                                  style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', color: 'white', borderRadius: '99px', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: '800' }}>✕</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button className="btn-ghost" style={{ flex: 1, padding: '7px' }} onClick={() => setEditingKey(null)}>ยกเลิก</button>
+                          {isOwner && (
+                            <button style={{ padding: '7px 12px', background: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit' }}
+                              onClick={() => { if (confirm('ลบกิจกรรมนี้?')) { const newPlan = JSON.parse(JSON.stringify(plan)); newPlan.days[activeDay].events.splice(ei, 1); setPlan(newPlan); setEditingKey(null); fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) }) } }}>
+                              🗑️ ลบ
+                            </button>
+                          )}
                           <button className="btn-primary" style={{ flex: 2, padding: '7px', fontSize: '13px' }} onClick={() => saveInlineEdit(activeDay, ei)}>บันทึก</button>
                         </div>
                       </div>
@@ -1738,72 +1796,22 @@ export default function TripPage() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                          {isOwner && (
-                            <>
-                              <button className="icon-btn" title="AI Suggestion" onClick={() => { setSuggestions([]); fetchSuggestions(activeDay, ei) }}
-                                style={{ fontSize: '15px', opacity: 0.7 }}>✨</button>
-                              <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || ''); setEditLocation(ev.location || '') }}
-                                style={{ fontSize: '15px', opacity: 0.7 }}>✏️</button>
-                            </>
-                          )}
-                          {!isGuest && (
-                            <button className="icon-btn" onClick={e => { e.stopPropagation(); setShowNote(p => ({ ...p, [key]: !showNote[key] })) }}
-                              style={{ fontSize: '15px', opacity: noteMap[key] ? 1 : 0.4 }} title="เพิ่ม note">📝</button>
+                          {(isOwner || !isGuest) && (
+                            <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || ''); setEditLocation(ev.location || ''); setEditNote(noteMap[key] || '') }}
+                              style={{ fontSize: '15px', opacity: 0.7 }}>✏️</button>
                           )}
                         </div>
                       </div>
                     )}
-                    {showNote[key] && !isEditing && (
+                    {/* Show note text + images inline (read-only) when not editing */}
+                    {!isEditing && (noteMap[key] || noteImages[key]?.length > 0) && (
                       <div style={{ borderTop: `1px solid ${light}`, padding: '8px 12px 10px' }}>
-                        <div style={{ fontSize: '11px', color: col, fontWeight: '700', marginBottom: '5px' }}>📝 Note</div>
-                        <textarea
-                          style={{ width: '100%', border: `1.5px solid ${col}33`, borderRadius: '8px', padding: '7px 10px', fontSize: '13px', resize: 'none', fontFamily: 'inherit', outline: 'none', color: '#0C4A6E', background: 'rgba(255,255,255,0.7)' }}
-                          rows={2} placeholder="เพิ่ม note ที่นี่..."
-                          value={noteMap[key] || ''} onClick={e => e.stopPropagation()}
-                          onChange={e => saveNote(key, e.target.value)} />
-                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
-                          <label style={{ fontSize: '11px', color: col, fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', background: `${col}15`, border: `1px solid ${col}33`, borderRadius: '8px', padding: '4px 10px' }}>
-                            🖼️ แนบรูป
-                            <input type="file" accept="image/*" multiple style={{ display: 'none' }}
-                              onChange={e => {
-                                Array.from(e.target.files).forEach(file => {
-                                  const reader = new FileReader()
-                                  reader.onload = ev => addPendingImage(key, ev.target.result)
-                                  reader.readAsDataURL(file)
-                                })
-                                e.target.value = ''
-                              }} />
-                          </label>
-                          {(pendingImages[key]?.length > 0) && (
-                            <button onClick={() => saveNoteImages(key)}
-                              style={{ fontSize: '11px', color: 'white', fontWeight: '700', cursor: 'pointer', background: '#10B981', border: 'none', borderRadius: '8px', padding: '4px 12px', fontFamily: 'inherit' }}>
-                              💾 Save ({pendingImages[key].length} รูป)
-                            </button>
-                          )}
-                        </div>
-                        {/* Pending images (not saved yet) */}
-                        {pendingImages[key]?.length > 0 && (
-                          <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }} onClick={e => e.stopPropagation()}>
-                            {pendingImages[key].map((img, idx) => (
-                              <div key={idx} style={{ position: 'relative' }}>
-                                <img src={img} alt="" style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `2px dashed ${col}55`, opacity: 0.7 }} onClick={() => setPreviewImage(img)} />
-                                <span onClick={() => removePendingImage(key, idx)}
-                                  style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', color: 'white', borderRadius: '99px', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: '800' }}>✕</span>
-                                <div style={{ position: 'absolute', bottom: '2px', left: '2px', fontSize: '8px', background: '#f59e0b', color: 'white', padding: '1px 5px', borderRadius: '4px', fontWeight: '700' }}>ยังไม่ Save</div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {/* Saved images grid */}
+                        {noteMap[key] && <div style={{ fontSize: '12px', color: '#64748B', lineHeight: 1.5 }}>📝 {noteMap[key]}</div>}
                         {noteImages[key]?.length > 0 && (
-                          <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ marginTop: '6px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '6px' }}>
                             {(Array.isArray(noteImages[key]) ? noteImages[key] : [noteImages[key]]).map((img, idx) => (
-                              <div key={idx} style={{ position: 'relative', cursor: 'pointer' }}>
-                                <img src={img} alt="" onClick={() => setPreviewImage(img)}
-                                  style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `1.5px solid ${col}33` }} />
-                                <span onClick={(e) => { e.stopPropagation(); removeNoteImage(key, idx) }}
-                                  style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ef4444', color: 'white', borderRadius: '99px', width: '18px', height: '18px', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: '800' }}>✕</span>
-                              </div>
+                              <img key={idx} src={img} alt="" onClick={() => setPreviewImage(img)}
+                                style={{ width: '100%', height: '80px', objectFit: 'cover', borderRadius: '8px', border: `1.5px solid ${col}33`, cursor: 'pointer' }} />
                             ))}
                           </div>
                         )}
