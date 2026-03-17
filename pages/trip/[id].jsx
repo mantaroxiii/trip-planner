@@ -2166,9 +2166,9 @@ export default function TripPage() {
         {/* AI Chat Modal */}
         {showChat && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', flexDirection: 'column' }}>
-            <div className="container-main" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div className="container-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               {/* Chat Header */}
-              <div style={{ padding: '16px', background: 'linear-gradient(135deg,#0C4A6E,#1E40AF)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ padding: '16px', background: 'linear-gradient(135deg,#0C4A6E,#1E40AF)', display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
                 <button onClick={() => setShowChat(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '14px', fontFamily: 'inherit' }}>←</button>
                 <div>
                   <div style={{ fontSize: '16px', fontWeight: '800', color: 'white' }}>🤖 AI Travel Assistant</div>
@@ -2176,7 +2176,7 @@ export default function TripPage() {
                 </div>
               </div>
               {/* Messages */}
-              <div style={{ flex: 1, overflow: 'auto', padding: '16px', background: '#0C1829', display: 'flex', flexDirection: 'column', gap: '12px' }} ref={el => { if (el) el.scrollTop = el.scrollHeight }}>
+              <div style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px', background: '#0C1829', display: 'flex', flexDirection: 'column', gap: '12px', minHeight: 0 }} ref={el => { if (el) el.scrollTop = el.scrollHeight }}>
                 {chatMessages.length === 0 && (
                   <div style={{ textAlign: 'center', padding: '40px 20px', color: 'rgba(255,255,255,0.3)' }}>
                     <div style={{ fontSize: '48px', marginBottom: '12px' }}>🌏</div>
@@ -2202,7 +2202,7 @@ export default function TripPage() {
                 )}
               </div>
               {/* Input */}
-              <div style={{ padding: '12px', background: '#0F2744', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '8px' }}>
+              <div style={{ padding: '12px', background: '#0F2744', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '8px', flexShrink: 0 }}>
                 <input value={chatInput} onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
                   placeholder="ถามเกี่ยวกับทริป..."
