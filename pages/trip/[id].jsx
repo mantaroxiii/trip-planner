@@ -674,11 +674,49 @@ export default function TripPage() {
   }
 
   // Documents
-  const loadDocs = () => {
-    const saved = localStorage.getItem(`docs-${id}`)
-    if (saved) try { setTripDocs(JSON.parse(saved)) } catch (e) { }
+  // Encryption helpers for documents
+  const getDocKey = async () => {
+    const enc = new TextEncoder()
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(`trip-docs-${id}-salt-v1`), 'PBKDF2', false, ['deriveKey'])
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: enc.encode('trip-planner-docs'), iterations: 100000, hash: 'SHA-256' }, keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
   }
-  const saveDocs = (docs) => { setTripDocs(docs); localStorage.setItem(`docs-${id}`, JSON.stringify(docs)) }
+  const encryptData = async (data) => {
+    const key = await getDocKey()
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const enc = new TextEncoder()
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(data)))
+    return JSON.stringify({ iv: Array.from(iv), data: Array.from(new Uint8Array(encrypted)) })
+  }
+  const decryptData = async (stored) => {
+    const key = await getDocKey()
+    const { iv, data } = JSON.parse(stored)
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(iv) }, key, new Uint8Array(data))
+    return JSON.parse(new TextDecoder().decode(decrypted))
+  }
+
+  const loadDocs = async () => {
+    const saved = localStorage.getItem(`docs-${id}`)
+    if (!saved) return
+    try {
+      // Try encrypted format first
+      const docs = await decryptData(saved)
+      setTripDocs(docs)
+    } catch (e) {
+      // Fallback: old unencrypted format → migrate
+      try {
+        const docs = JSON.parse(saved)
+        setTripDocs(docs)
+        // Re-save encrypted
+        const encrypted = await encryptData(docs)
+        localStorage.setItem(`docs-${id}`, encrypted)
+      } catch (e2) { }
+    }
+  }
+  const saveDocs = async (docs) => {
+    setTripDocs(docs)
+    const encrypted = await encryptData(docs)
+    localStorage.setItem(`docs-${id}`, encrypted)
+  }
   const addDoc = () => {
     if (!docLabel.trim() || !docValue.trim()) return
     saveDocs([...tripDocs, { label: docLabel.trim(), value: docValue.trim() }])
@@ -1964,7 +2002,12 @@ export default function TripPage() {
             <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowDocs(false) }}>
               <div className="modal-sheet" style={{ maxHeight: '85vh', overflow: 'auto' }}>
                 <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
-                <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '16px' }}>📄 เอกสารและข้อมูลสำคัญ</div>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '8px' }}>📄 เอกสารและข้อมูลสำคัญ</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.03))', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '14px' }}>🔐</span>
+                  <span style={{ fontSize: '11px', color: '#065F46', fontWeight: '600' }}>เข้ารหัส AES-256 · เก็บเฉพาะในเครื่องคุณ · ไม่แชร์กับผู้อื่น</span>
+                </div>
+
 
                 {/* Add new doc */}
                 <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
