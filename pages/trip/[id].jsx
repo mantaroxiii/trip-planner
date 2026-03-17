@@ -640,7 +640,7 @@ export default function TripPage() {
     }, 1000)
   }
 
-  const doGenerate = async (langOverride) => {
+  const doGenerate = async (langOverride, isLangSwitch = false) => {
     const useLang = langOverride || lang
     setConfirmGenerate(false)
     if (provider !== 'gemini' && !apiKey) { setShowSettings(true); return }
@@ -653,15 +653,19 @@ export default function TripPage() {
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      setPlan(data); setActiveDay(0); setChecked({}); setNoteMap({})
+      setPlan(data); setActiveDay(0)
       setPlansByLang(prev => ({ ...prev, [useLang]: data }))
-      localStorage.removeItem(`checked-${id}`)
-      localStorage.removeItem(`notes-${id}`)
-      await fetch(`/api/trips/${id}`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan_json: data, title: data.tripTitle || destination }),
-      })
+      if (!isLangSwitch) {
+        // Only overwrite DB when user explicitly generates, not on language switch
+        setChecked({}); setNoteMap({})
+        localStorage.removeItem(`checked-${id}`)
+        localStorage.removeItem(`notes-${id}`)
+        await fetch(`/api/trips/${id}`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan_json: data, title: data.tripTitle || destination }),
+        })
+      }
       setStep('plan'); setShowTimeline(true)
       // Fetch weather for plan view
       if (destination || data.tripTitle) {
@@ -2564,9 +2568,11 @@ export default function TripPage() {
                 {['th', 'en', 'jp'].map(l => (
                   <button key={l} onClick={() => {
                     if (l === lang) return
+                    // Save current plan to cache before switching
+                    setPlansByLang(prev => ({ ...prev, [lang]: JSON.parse(JSON.stringify(plan)) }))
                     setLang(l)
                     if (plansByLang[l]) { setPlan(plansByLang[l]); setActiveDay(0) }
-                    else { setTimeout(() => doGenerate(l), 100) }
+                    else { setTimeout(() => doGenerate(l, true), 100) }
                   }}
                     style={{ background: lang === l ? '#0EA5E9' : 'transparent', color: lang === l ? 'white' : '#64748B', border: 'none', padding: '6px 14px', cursor: 'pointer', fontSize: '12px', fontWeight: lang === l ? '800' : '500', fontFamily: 'inherit', borderRight: l !== 'jp' ? '1px solid rgba(14,165,233,0.1)' : 'none' }}>
                     {l === 'th' ? '🇹🇭 ไทย' : l === 'en' ? '🇬🇧 EN' : '🇯🇵 日本語'}
