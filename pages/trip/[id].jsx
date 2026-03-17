@@ -2082,6 +2082,21 @@ export default function TripPage() {
                     🔄
                   </button>
                 )}
+                {isOwner && plan.days.length > 1 && (
+                  <button onClick={async () => {
+                    if (!confirm(`ลบ "${day.title}" ทั้งวัน? (${(day.events || []).length} กิจกรรม)`)) return
+                    const newPlan = JSON.parse(JSON.stringify(plan))
+                    newPlan.days.splice(activeDay, 1)
+                    const newActive = Math.min(activeDay, newPlan.days.length - 1)
+                    setPlan(newPlan); setActiveDay(newActive)
+                    lastSaveTimeRef.current = Date.now()
+                    await fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
+                  }}
+                    style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.3)', color: 'white', borderRadius: '10px', padding: '6px 10px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', fontFamily: 'inherit', flexShrink: 0 }}
+                    title="ลบวันนี้">
+                    🗑️
+                  </button>
+                )}
               </div>
               {/* ─── WEATHER BANNER ─── */}
               {(() => {
