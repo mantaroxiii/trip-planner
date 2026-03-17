@@ -2180,20 +2180,55 @@ export default function TripPage() {
                         </div>
                       </div>
                     ) : (
-                      <div onClick={() => { if (!isGuest) toggleCheck(key) }} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '11px', cursor: isGuest ? 'default' : 'pointer' }}>
+                      <div onClick={() => {
+                        if (!isGuest && (isOwner || !isGuest)) {
+                          setEditingKey(key); setEditTitle(ev.title || ''); setEditTime(ev.time || ''); setEditDetail(ev.detail || ''); setEditLocation(ev.location || ''); setEditNote(noteMap[key] || ''); setEditIcon(ev.icon || '')
+                        }
+                      }} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '11px', cursor: isGuest ? 'default' : 'pointer' }}>
                         {(isOwner || !isGuest) && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0, paddingTop: '2px', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
                             {ei > 0 && <button className="icon-btn" onClick={() => moveEvent(activeDay, ei, ei - 1)} style={{ fontSize: '10px', padding: '2px 4px', opacity: 0.5, lineHeight: 1 }} title="ย้ายขึ้น">▲</button>}
-                            <span style={{ fontSize: '14px', cursor: 'grab', opacity: 0.2, textAlign: 'center', lineHeight: 1, userSelect: 'none' }} title="ลากเพื่อย้าย">☰</span>
+                            <span
+                              style={{ fontSize: '14px', cursor: 'grab', opacity: 0.3, textAlign: 'center', lineHeight: 1, userSelect: 'none', touchAction: 'none' }}
+                              title="ลากเพื่อย้าย"
+                              onTouchStart={e => {
+                                e.stopPropagation()
+                                const touch = e.touches[0]
+                                e.currentTarget._dragStart = { y: touch.clientY, idx: ei }
+                                e.currentTarget.style.opacity = '0.8'
+                              }}
+                              onTouchMove={e => {
+                                e.stopPropagation(); e.preventDefault()
+                                const el = e.currentTarget
+                                const touch = e.touches[0]
+                                if (!el._dragStart) return
+                                const diff = touch.clientY - el._dragStart.y
+                                const card = el.closest('.event-card')
+                                const cardH = card?.offsetHeight || 60
+                                if (Math.abs(diff) > cardH * 0.6) {
+                                  const dir = diff > 0 ? 1 : -1
+                                  const from = el._dragStart.idx
+                                  const to = from + dir
+                                  if (to >= 0 && to < (day.events || []).length) {
+                                    moveEvent(activeDay, from, to)
+                                    el._dragStart = { y: touch.clientY, idx: to }
+                                  }
+                                }
+                              }}
+                              onTouchEnd={e => {
+                                e.currentTarget.style.opacity = '0.3'
+                                e.currentTarget._dragStart = null
+                              }}
+                            >☰</span>
                             {ei < (day.events || []).length - 1 && <button className="icon-btn" onClick={() => moveEvent(activeDay, ei, ei + 1)} style={{ fontSize: '10px', padding: '2px 4px', opacity: 0.5, lineHeight: 1 }} title="ย้ายลง">▼</button>}
                           </div>
                         )}
                         <div style={{ fontSize: '11px', color: '#38BDF8', fontFamily: 'monospace', width: '36px', flexShrink: 0, paddingTop: '3px', fontWeight: '700' }}>{ev.time}</div>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: isDone ? '#d1fae5' : light, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0, transition: 'all 0.2s' }}>
-                          {isDone ? '✅' : ev.icon}
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: light, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', flexShrink: 0, transition: 'all 0.2s' }}>
+                          {ev.icon}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E', textDecoration: isDone ? 'line-through' : 'none' }}>{ev.title}</div>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E' }}>{ev.title}</div>
                           {ev.detail && <div style={{ fontSize: '12px', color: ev.warning ? '#d97706' : '#38BDF8', marginTop: '2px' }}>{ev.detail}</div>}
                           {/* Attribution */}
                           {(ev.createdBy || ev.updatedBy || ev.imageUploadedBy) && (
