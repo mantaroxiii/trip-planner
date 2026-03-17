@@ -378,6 +378,14 @@ export default function TripPage() {
           const incoming = JSON.stringify(updated.plan_json)
           if (incoming !== JSON.stringify(planRef.current)) {
             setPlan(updated.plan_json)
+            // Also sync shared images from updated plan
+            const sharedImgs = {}
+            updated.plan_json.days?.forEach((d, di) => {
+              (d.events || []).forEach((ev, ei) => {
+                if (ev.images?.length > 0) sharedImgs[`${di}-${ei}`] = ev.images
+              })
+            })
+            if (Object.keys(sharedImgs).length > 0) setNoteImages(prev => ({ ...prev, ...sharedImgs }))
             setEditNotif('✏️ มีการอัปเดต plan')
             setTimeout(() => setEditNotif(''), 4000)
           }
