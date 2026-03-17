@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trip-planner-v2'
+const CACHE_NAME = 'trip-planner-v3'
 
 // Files to cache for offline shell
 const SHELL_FILES = [
@@ -51,6 +51,9 @@ self.addEventListener('fetch', (event) => {
 
     // Skip Next.js HMR / webpack
     if (url.pathname.startsWith('/_next/webpack-hmr')) return
+
+    // Don't cache Next.js static files (JS chunks) — always fetch fresh
+    if (url.pathname.startsWith('/_next/')) return
 
     event.respondWith(
         // Try network first
