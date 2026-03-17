@@ -79,6 +79,7 @@ export default function TripPage() {
   const [editDetail, setEditDetail] = useState('')
   const [editLocation, setEditLocation] = useState('')
   const [editNote, setEditNote] = useState('')
+  const [editIcon, setEditIcon] = useState('')
 
   // Day title edit
   const [editingDayTitle, setEditingDayTitle] = useState(false)
@@ -634,6 +635,7 @@ export default function TripPage() {
       time: editTime,
       detail: editDetail,
       location: editLocation || undefined,
+      icon: editIcon || undefined,
     }
     // Save note before sorting (so it's in noteMap for remapping)
     const key = dayIdx + '-' + evIdx
@@ -656,7 +658,7 @@ export default function TripPage() {
 
   const addNewEvent = async (dayIdx) => {
     const newPlan = JSON.parse(JSON.stringify(plan))
-    const newEvent = { time: '', title: '', detail: '', type: 'กิจกรรม' }
+    const newEvent = { time: '', title: '', detail: '', type: 'กิจกรรม', icon: '📌' }
     newPlan.days[dayIdx].events.push(newEvent)
     setPlan(newPlan)
     const newIdx = newPlan.days[dayIdx].events.length - 1
@@ -667,6 +669,7 @@ export default function TripPage() {
     setEditDetail('')
     setEditLocation('')
     setEditNote('')
+    setEditIcon('📌')
     lastSaveTimeRef.current = Date.now()
     await fetch(`/api/trips/${id}`, {
       method: 'PATCH',
@@ -1894,6 +1897,15 @@ export default function TripPage() {
                           <input className="trip-input" value={editTime} onChange={e => setEditTime(e.target.value)} placeholder="เวลา" style={{ width: '80px', padding: '7px 10px', fontSize: '12px' }} />
                           <input className="trip-input" value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="ชื่อ activity" style={{ flex: 1, padding: '7px 10px', fontSize: '13px' }} />
                         </div>
+                        <div>
+                          <div style={{ fontSize: '11px', color: '#64748B', marginBottom: '4px', fontWeight: '600' }}>ไอคอน: {editIcon || '(ไม่มี)'}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                            {['🍽️', '☕', '🏛️', '🛕', '⛩️', '🏖️', '🎢', '🛒', '🚶', '🚗', '✈️', '🚃', '🏨', '📸', '🎭', '🎵', '💆', '🏊', '⛷️', '🥾', '🌅', '🌙', '📌', '⭐', '❤️', '🎯', '🔔', '🎪', '🎨', '🧘'].map(em => (
+                              <span key={em} onClick={() => setEditIcon(em)}
+                                style={{ fontSize: '18px', cursor: 'pointer', padding: '3px 4px', borderRadius: '6px', background: editIcon === em ? `${col}25` : 'transparent', border: editIcon === em ? `2px solid ${col}` : '2px solid transparent', transition: 'all 0.15s', lineHeight: 1 }}>{em}</span>
+                            ))}
+                          </div>
+                        </div>
                         <input className="trip-input" value={editDetail} onChange={e => setEditDetail(e.target.value)} placeholder="รายละเอียด (optional)" style={{ padding: '7px 10px', fontSize: '12px' }} />
                         <input className="trip-input" value={editLocation} onChange={e => setEditLocation(e.target.value)} placeholder="📍 สถานที่ (ชื่อร้าน, ที่อยู่, หรือพิกัด)" style={{ padding: '7px 10px', fontSize: '12px' }} />
                         <textarea className="trip-input" value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="📝 Note (เพิ่มเติม, เช่น ต้องจองล่วงหน้า)" rows={2} style={{ padding: '7px 10px', fontSize: '12px', resize: 'none' }} />
@@ -2013,7 +2025,7 @@ export default function TripPage() {
                         </div>
                         <div style={{ display: 'flex', gap: '2px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                           {(isOwner || !isGuest) && (
-                            <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || ''); setEditLocation(ev.location || ''); setEditNote(noteMap[key] || '') }}
+                            <button className="icon-btn" title="แก้ไข" onClick={() => { setEditingKey(key); setEditTitle(ev.title); setEditTime(ev.time || ''); setEditDetail(ev.detail || ''); setEditLocation(ev.location || ''); setEditNote(noteMap[key] || ''); setEditIcon(ev.icon || '') }}
                               style={{ fontSize: '15px', opacity: 0.7 }}>✏️</button>
                           )}
                         </div>
