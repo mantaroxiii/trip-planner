@@ -13,6 +13,7 @@ export default function AdminPage() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState('')
     const [search, setSearch] = useState('')
+    const [cleaning, setCleaning] = useState(false)
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session: s } }) => {
@@ -35,6 +36,21 @@ export default function AdminPage() {
             setData(d)
         } catch (e) { setError('โหลดข้อมูลไม่สำเร็จ') }
         setLoading(false)
+    }
+
+    const leaveAllTrips = async () => {
+        if (!confirm('ออกจากทุกทริปที่คุณร่วมอยู่ (ยกเว้นทริปที่คุณเป็นเจ้าของ)?')) return
+        setCleaning(true)
+        try {
+            const res = await fetch('/api/admin', {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${session.access_token}` },
+            })
+            const d = await res.json()
+            alert(`✅ ออกจากทริปแล้ว ${d.removed} ทริป`)
+            fetchAdmin(session.access_token)
+        } catch { alert('❌ เกิดข้อผิดพลาด') }
+        setCleaning(false)
     }
 
     const filteredTrips = (data?.trips || []).filter(t => {
@@ -128,6 +144,14 @@ export default function AdminPage() {
                             <div style={{ fontSize: '10px', color: '#A78BFA', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Has Plan</div>
                             <div style={{ fontSize: '28px', fontWeight: '800', marginTop: '4px' }}>{data?.stats?.tripsWithPlan || 0}</div>
                         </div>
+                    </div>
+
+                    {/* Cleanup Button */}
+                    <div style={{ marginBottom: '16px' }}>
+                        <button onClick={leaveAllTrips} disabled={cleaning}
+                            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171', borderRadius: '10px', padding: '8px 16px', cursor: 'pointer', fontSize: '12px', fontWeight: '600', fontFamily: 'inherit', opacity: cleaning ? 0.5 : 1 }}>
+                            {cleaning ? '⏳ กำลังลบ...' : '🧹 ออกจากทุกทริปที่ร่วมโดยไม่ตั้งใจ'}
+                        </button>
                     </div>
 
                     {/* Search */}

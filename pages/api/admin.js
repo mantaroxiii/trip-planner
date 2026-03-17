@@ -68,5 +68,51 @@ export default async function handler(req, res) {
         })
     }
 
+    // DELETE: Remove admin from all trip_members (non-owner trips)
+    if (req.method === 'DELETE') {
+        // Find trips admin owns
+        const { data: ownTrips } = await admin
+            .from('trips')
+            .select('id')
+            .eq('owner_id', user.id)
+        const ownTripIds = (ownTrips || []).map(t => t.id)
+
+        // Delete admin from all trip_members (except own trips)
+        let query = admin
+            .from('trip_members')
+            .delete()
+            .eq('user_id', user.id)
+
+        if (ownTripIds.length > 0) {
+            // Can't use .not().in() easily, do in two steps
+            const { data: memberships } = await admin
+                .from('trip_members')
+                .select('id, trip_id')
+                .eq('user_id', user.id)
+
+            const toDelete = (memberships || []).filter(m => !ownTripIds.includes(m.trip_id))
+            if (toDelete.length === 0) return res.json({ removed: 0 })
+
+            const deleteIds = toDelete.map(m => m.id)
+            const { error } = await admin
+                .from('trip_members')
+                .delete()
+                .in('id', deleteIds)
+
+            if (error) return res.status(500).json({ error: error.message })
+            return res.json({ removed: toDelete.length })
+        } else {
+            // Admin doesn't own any trips, delete all memberships
+            const { data, error } = await admin
+                .from('trip_members')
+                .delete()
+                .eq('user_id', user.id)
+                .select('id')
+
+            if (error) return res.status(500).json({ error: error.message })
+            return res.json({ removed: data?.length || 0 })
+        }
+    }
+
     return res.status(405).end()
 }
