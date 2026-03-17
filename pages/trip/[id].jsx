@@ -263,7 +263,11 @@ export default function TripPage() {
       const savedImages = localStorage.getItem(`noteImages-${id}`)
       if (savedChecked) setChecked(JSON.parse(savedChecked))
       if (savedNotes) setNoteMap(JSON.parse(savedNotes))
-      if (savedImages) setNoteImages(JSON.parse(savedImages))
+      // Load images from plan_json events (shared), fallback to localStorage (legacy)
+      if (savedImages) {
+        const parsed = JSON.parse(savedImages)
+        if (Object.keys(parsed).length > 0) setNoteImages(parsed)
+      }
       const savedBudget = localStorage.getItem(`budget-${id}`)
       if (savedBudget) try {
         const parsed = JSON.parse(savedBudget)
@@ -401,6 +405,16 @@ export default function TripPage() {
     if (t.plan_json) {
       setPlan(t.plan_json); setStep('plan'); setShowTimeline(true)
       setPlansByLang(prev => ({ ...prev, th: t.plan_json }))
+      // Load shared images from plan_json events
+      const sharedImgs = {}
+      t.plan_json.days?.forEach((d, di) => {
+        (d.events || []).forEach((ev, ei) => {
+          if (ev.images?.length > 0) sharedImgs[`${di}-${ei}`] = ev.images
+        })
+      })
+      if (Object.keys(sharedImgs).length > 0) {
+        setNoteImages(prev => ({ ...sharedImgs, ...prev }))
+      }
       if (t.destination || t.plan_json?.tripTitle) {
         fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination: t.destination, planTitle: t.plan_json?.tripTitle }) })
           .then(r => r.json()).then(d => setPlanWeather(d)).catch(() => { })
@@ -545,22 +559,49 @@ export default function TripPage() {
   const addPendingImage = (key, base64) => {
     setPendingImages(prev => ({ ...prev, [key]: [...(prev[key] || []), base64] }))
   }
-  const saveNoteImages = (key) => {
+  const saveNoteImages = async (key) => {
     const pending = pendingImages[key] || []
     if (pending.length === 0) return
     const existing = noteImages[key] || []
-    const next = { ...noteImages, [key]: [...existing, ...pending] }
+    const allImgs = [...existing, ...pending]
+    const next = { ...noteImages, [key]: allImgs }
     setNoteImages(next)
     localStorage.setItem(`noteImages-${id}`, JSON.stringify(next))
     setPendingImages(prev => { const p = { ...prev }; delete p[key]; return p })
+    // Also save to plan_json so all members can see
+    const [dayIdx, evIdx] = key.split('-').map(Number)
+    if (plan?.days?.[dayIdx]?.events?.[evIdx]) {
+      const newPlan = JSON.parse(JSON.stringify(plan))
+      newPlan.days[dayIdx].events[evIdx].images = allImgs
+      setPlan(newPlan)
+      lastSaveTimeRef.current = Date.now()
+      await fetch(`/api/trips/${id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan_json: newPlan }),
+      })
+    }
   }
-  const removeNoteImage = (key, idx) => {
+  const removeNoteImage = async (key, idx) => {
     const imgs = [...(noteImages[key] || [])]
     imgs.splice(idx, 1)
     const next = { ...noteImages, [key]: imgs.length ? imgs : undefined }
     if (!imgs.length) delete next[key]
     setNoteImages(next)
     localStorage.setItem(`noteImages-${id}`, JSON.stringify(next))
+    // Also update plan_json
+    const [dayIdx, evIdx] = key.split('-').map(Number)
+    if (plan?.days?.[dayIdx]?.events?.[evIdx]) {
+      const newPlan = JSON.parse(JSON.stringify(plan))
+      newPlan.days[dayIdx].events[evIdx].images = imgs.length ? imgs : undefined
+      setPlan(newPlan)
+      lastSaveTimeRef.current = Date.now()
+      await fetch(`/api/trips/${id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan_json: newPlan }),
+      })
+    }
   }
   const removePendingImage = (key, idx) => {
     const imgs = [...(pendingImages[key] || [])]

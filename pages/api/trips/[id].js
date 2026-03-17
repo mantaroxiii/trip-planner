@@ -76,9 +76,9 @@ export default async function handler(req, res) {
   // For write operations, require auth
   if (!user) return res.status(401).json({ error: 'Unauthorized' })
 
-  // Only owner can PATCH/DELETE
-  if (!isOwner) {
-    return res.status(403).json({ error: 'Only the trip owner can modify this trip' })
+  // Only owner or member can PATCH/DELETE
+  if (!isOwner && !isMember) {
+    return res.status(403).json({ error: 'Only trip owner or members can modify this trip' })
   }
 
   if (req.method === 'PATCH') {
