@@ -20,6 +20,7 @@ export default function SpendingReport() {
     const [revealStep, setRevealStep] = useState(0)
     const [displayCurrency, setDisplayCurrency] = useState('THB')
     const [exchangeRates, setExchangeRates] = useState({ THB: 1, JPY: 3.85 }) // fallback rates (1 JPY ≈ 0.26 THB)
+    const [mounted, setMounted] = useState(false)
 
     useEffect(() => {
         if (!router.isReady || !id) return
@@ -39,6 +40,7 @@ export default function SpendingReport() {
             .catch(() => { })
         let step = 0
         const timer = setInterval(() => { step++; setRevealStep(step); if (step >= 8) clearInterval(timer) }, 150)
+        setMounted(true)
         return () => clearInterval(timer)
     }, [router.isReady, id])
 
@@ -180,23 +182,23 @@ export default function SpendingReport() {
         if (!active || !payload?.length) return null
         return (
             <div style={{ background: 'rgba(12,74,110,0.95)', backdropFilter: 'blur(12px)', borderRadius: '10px', padding: '8px 12px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}>
-                <div style={{ color: 'white', fontSize: '12px', fontWeight: '700' }}>{payload[0].name}</div>
+                <div style={{ color: 'white', fontSize: '12px', fontWeight: '700' }}>{payload[0]?.name || ''}</div>
                 <div style={{ color: '#38BDF8', fontSize: '14px', fontWeight: '800', marginTop: '2px' }}>
-                    {CURRENCY_SYMBOLS[displayCurrency] || ''}{payload[0].value?.toLocaleString()}
+                    {CURRENCY_SYMBOLS[displayCurrency] || ''}{payload[0]?.value?.toLocaleString?.() || '0'}
                 </div>
             </div>
         )
     }
 
     const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }) => {
-        if (percent < 0.05) return null
+        if (!percent || percent < 0.05) return null
         const RADIAN = Math.PI / 180
-        const radius = innerRadius + (outerRadius - innerRadius) * 0.5
-        const x = cx + radius * Math.cos(-midAngle * RADIAN)
-        const y = cy + radius * Math.sin(-midAngle * RADIAN)
+        const radius = (innerRadius || 0) + ((outerRadius || 0) - (innerRadius || 0)) * 0.5
+        const x = (cx || 0) + radius * Math.cos(-(midAngle || 0) * RADIAN)
+        const y = (cy || 0) + radius * Math.sin(-(midAngle || 0) * RADIAN)
         return (
             <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize="11" fontWeight="700">
-                {name} {(percent * 100).toFixed(0)}%
+                {(name || '')} {((percent || 0) * 100).toFixed(0)}%
             </text>
         )
     }

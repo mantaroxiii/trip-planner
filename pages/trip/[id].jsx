@@ -820,8 +820,8 @@ export default function TripPage() {
     .icon-btn:hover { background:rgba(14,165,233,0.08); transform:scale(1.1); }
     .day-tab { flex-shrink:0; padding:10px 15px; border-radius:14px; border:2px solid transparent; cursor:pointer; text-align:center; font-size:11px; font-weight:600; transition:all 0.3s; font-family:inherit; }
     .day-tab:hover { transform:translateY(-2px); }
-    .modal-overlay { position:fixed; inset:0; background:rgba(12,74,110,0.4); backdrop-filter:blur(8px); z-index:999; display:flex; align-items:flex-end; justify-content:center; animation:fadeIn 0.2s ease; }
-    .modal-sheet { background:rgba(255,255,255,0.97); backdrop-filter:blur(24px); border-radius:28px 28px 0 0; padding:24px 20px 40px; width:100%; max-width:540px; border:1px solid rgba(255,255,255,0.95); box-shadow:0 -8px 40px rgba(14,165,233,0.15); animation:slideUp 0.3s ease; }
+    .modal-overlay { position:fixed; inset:0; background:rgba(12,74,110,0.4); backdrop-filter:blur(8px); z-index:999; display:flex; align-items:flex-end; justify-content:center; animation:fadeIn 0.2s ease; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    .modal-sheet { background:rgba(255,255,255,0.97); backdrop-filter:blur(24px); border-radius:28px 28px 0 0; padding:24px 20px 40px; width:100%; max-width:540px; border:1px solid rgba(255,255,255,0.95); box-shadow:0 -8px 40px rgba(14,165,233,0.15); animation:slideUp 0.3s ease; max-height:85vh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
     @keyframes fadeIn { from{opacity:0} to{opacity:1} }
     @keyframes slideUp { from{transform:translateY(100%);opacity:0} to{transform:translateY(0);opacity:1} }
     @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
