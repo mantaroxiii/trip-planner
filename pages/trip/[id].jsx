@@ -1886,10 +1886,6 @@ export default function TripPage() {
           </div>
           <div style={{ textAlign: 'center', marginTop: '12px', position: 'relative' }}>
             <div style={{ fontSize: '20px', fontWeight: '800', letterSpacing: '-0.3px' }}>{plan.tripTitle}</div>
-            <div style={{ fontSize: '12px', opacity: 0.7, marginTop: '4px' }}>{done}/{total} กิจกรรม</div>
-            <div style={{ margin: '10px auto 0', maxWidth: '200px', height: '5px', background: 'rgba(255,255,255,0.2)', borderRadius: '99px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: '#38BDF8', width: (done / total * 100) + '%', transition: 'width .4s', borderRadius: '99px' }} />
-            </div>
           </div>
         </div>
 
@@ -2377,6 +2373,30 @@ export default function TripPage() {
                 <button className="btn-ghost" style={{ flex: 1 }} onClick={() => setStep('draft')}>{isOwner ? '← แก้ Notes' : '← ดู Notes'}</button>
                 {isOwner && <button className="btn-primary" style={{ flex: 2 }} onClick={handleGenerate}>✨ Generate ใหม่</button>}
               </div>
+              {/* Owner: Approval toggle */}
+              {isOwner && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: requireApproval ? 'rgba(139,92,246,0.06)' : 'rgba(16,185,129,0.06)', borderRadius: '12px', border: `1px solid ${requireApproval ? 'rgba(139,92,246,0.15)' : 'rgba(16,185,129,0.15)'}` }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: requireApproval ? '#7C3AED' : '#10B981' }}>{requireApproval ? '🔒 Approve ก่อนแก้ไข' : '🔓 แก้ไขได้เลย'}</div>
+                    <div style={{ fontSize: '10px', color: requireApproval ? '#A78BFA' : '#6EE7B7', marginTop: '1px' }}>{requireApproval ? 'Member ต้องส่ง Proposal' : 'Member แก้ไขได้โดยตรง'}</div>
+                  </div>
+                  <div onClick={async () => {
+                    const newPlan = JSON.parse(JSON.stringify(plan))
+                    if (!newPlan.settings) newPlan.settings = {}
+                    newPlan.settings.requireApproval = !requireApproval
+                    setPlan(newPlan)
+                    lastSaveTimeRef.current = Date.now()
+                    await fetch(`/api/trips/${id}`, {
+                      method: 'PATCH',
+                      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ plan_json: newPlan }),
+                    })
+                  }}
+                    style={{ width: '44px', height: '24px', borderRadius: '99px', background: requireApproval ? '#8B5CF6' : '#10B981', cursor: 'pointer', position: 'relative', transition: 'background 0.2s' }}>
+                    <div style={{ width: '20px', height: '20px', borderRadius: '99px', background: 'white', position: 'absolute', top: '2px', left: requireApproval ? '22px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                  </div>
+                </div>
+              )}
               {/* Collapsible Tools Menu */}
               <button className="btn-ghost" style={{ width: '100%', fontSize: '13px' }} onClick={() => setShowToolsMenu(!showToolsMenu)}>
                 🛠️ {showToolsMenu ? 'ซ่อนเครื่องมือ' : 'เครื่องมือเพิ่มเติม'} {showToolsMenu ? '▲' : '▼'}
@@ -2408,30 +2428,6 @@ export default function TripPage() {
                     }}>
                     📤 แชร์/Export แผนทริป
                   </button>
-                  {/* Owner: Approval toggle */}
-                  {isOwner && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(139,92,246,0.06)', borderRadius: '12px', border: '1px solid rgba(139,92,246,0.12)' }}>
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#7C3AED' }}>🔒 ต้อง Approve ก่อนแก้ไข</div>
-                        <div style={{ fontSize: '10px', color: '#A78BFA', marginTop: '1px' }}>{requireApproval ? 'Member ต้องส่ง Proposal' : 'Member แก้ไขได้เลย'}</div>
-                      </div>
-                      <div onClick={async () => {
-                        const newPlan = JSON.parse(JSON.stringify(plan))
-                        if (!newPlan.settings) newPlan.settings = {}
-                        newPlan.settings.requireApproval = !requireApproval
-                        setPlan(newPlan)
-                        lastSaveTimeRef.current = Date.now()
-                        await fetch(`/api/trips/${id}`, {
-                          method: 'PATCH',
-                          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ plan_json: newPlan }),
-                        })
-                      }}
-                        style={{ width: '44px', height: '24px', borderRadius: '99px', background: requireApproval ? '#8B5CF6' : '#CBD5E1', cursor: 'pointer', position: 'relative', transition: 'background 0.2s' }}>
-                        <div style={{ width: '20px', height: '20px', borderRadius: '99px', background: 'white', position: 'absolute', top: '2px', left: requireApproval ? '22px' : '2px', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -2489,7 +2485,7 @@ export default function TripPage() {
             </div>
           )}
           <div style={{ fontSize: '11px', color: '#38BDF8', textAlign: 'center', marginTop: '10px' }}>
-            {isOwner ? 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อแก้ไข · กด 🔗 เพื่อแชร์' : isGuest ? '👁️ ดูอย่างเดียว · สมัครสมาชิกเพื่อแก้ไข' : 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อเพิ่ม note'}
+            {isOwner ? 'แตะกิจกรรมเพื่อแก้ไข · กด 🔗 เพื่อแชร์' : isGuest ? '👁️ ดูอย่างเดียว · สมัครสมาชิกเพื่อแก้ไข' : 'แตะกิจกรรมเพื่อแก้ไข · กด ☰ เพื่อจัดลำดับ'}
           </div>
 
           {/* Language Toggle at bottom */}
