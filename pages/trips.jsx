@@ -65,7 +65,7 @@ export default function Trips() {
   const S = {
     app: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', minHeight: '100vh', background: '#f1f5f9' },
     header: { background: 'white', borderBottom: '1px solid #e2e8f0', padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    content: { maxWidth: '600px', margin: '0 auto', padding: '20px 16px' },
+    content: { margin: '0 auto', padding: '20px 16px' },
     createBtn: { width: '100%', background: '#1e293b', color: 'white', border: 'none', borderRadius: '14px', padding: '14px', fontSize: '15px', fontWeight: '600', cursor: 'pointer', marginBottom: '16px', opacity: creating ? 0.6 : 1 },
     card: { background: 'white', borderRadius: '14px', padding: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' },
     deleteBtn: { background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '18px', padding: '4px 8px', flexShrink: 0 },
@@ -96,7 +96,7 @@ export default function Trips() {
         </div>
       </div>
 
-      <div style={S.content}>
+      <div className="container-main" style={S.content}>
         <button style={S.createBtn} onClick={createTrip} disabled={creating}>
           {creating ? '...' : '+ สร้าง Trip ใหม่'}
         </button>

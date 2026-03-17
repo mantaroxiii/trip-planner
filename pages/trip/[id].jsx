@@ -1186,7 +1186,7 @@ export default function TripPage() {
           )}
         </div>
 
-        <div style={{ padding: '20px 16px 60px', maxWidth: '600px', margin: '0 auto' }}>
+        <div className="container-main" style={{ padding: '20px 16px 60px' }}>
           {plan?.days?.map((day, di) => {
             const col = COLORS[di % COLORS.length]
             const isCurrentDay = di === currentDayIdx
@@ -1300,7 +1300,7 @@ export default function TripPage() {
         ) : null
       )}
 
-      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '16px' }}>
+      <div className="container-main" style={{ padding: '16px' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1819,7 +1819,7 @@ export default function TripPage() {
         </div>
 
         {/* Timeline */}
-        <div style={{ maxWidth: '600px', margin: '0 auto', padding: '12px' }}>
+        <div className="container-main" style={{ padding: '12px' }}>
           <div style={{ borderRadius: '20px', overflow: 'hidden', border: `2px solid ${col}`, background: light, boxShadow: `0 4px 20px ${col}22` }}>
             <div style={{ background: `linear-gradient(135deg,${col},${col}CC)`, padding: '16px', color: 'white' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -2154,7 +2154,7 @@ export default function TripPage() {
         {/* AI Chat Modal */}
         {showChat && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: '600px', width: '100%', margin: '0 auto' }}>
+            <div className="container-main" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               {/* Chat Header */}
               <div style={{ padding: '16px', background: 'linear-gradient(135deg,#0C4A6E,#1E40AF)', display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <button onClick={() => setShowChat(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '14px', fontFamily: 'inherit' }}>←</button>
