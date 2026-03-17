@@ -1975,7 +1975,14 @@ export default function TripPage() {
           {isOwner && (
             <button onClick={async () => {
               const newPlan = JSON.parse(JSON.stringify(plan))
-              newPlan.days.unshift({ day: 0, title: 'วันเตรียมตัว (Day 0)', date: '', emoji: '🧳', events: [] })
+              // Calculate date 1 day before first day
+              let day0Date = ''
+              const firstDate = newPlan.days[0]?.date
+              if (firstDate) {
+                const parsed = new Date(firstDate.replace(/(\d+)\s+(\w+)\s*(\d*)/, (_, d, m, y) => `${d} ${m} ${y || new Date().getFullYear()}`))
+                if (!isNaN(parsed)) { parsed.setDate(parsed.getDate() - 1); day0Date = parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
+              }
+              newPlan.days.unshift({ day: 0, title: 'วันเตรียมตัว (Day 0)', date: day0Date, emoji: '🧳', events: [] })
               setPlan(newPlan); setActiveDay(0)
               lastSaveTimeRef.current = Date.now()
               await fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
