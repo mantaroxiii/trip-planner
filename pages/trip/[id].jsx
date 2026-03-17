@@ -1971,7 +1971,20 @@ export default function TripPage() {
           )
         }
         {/* Day tabs */}
-        <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', overflowX: 'auto', background: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(14,165,233,0.1)' }}>
+        <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', overflowX: 'auto', background: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(14,165,233,0.1)', alignItems: 'center' }}>
+          {(isOwner || !isGuest) && (
+            <button onClick={async () => {
+              const newPlan = JSON.parse(JSON.stringify(plan))
+              const dayNum = 0
+              newPlan.days.unshift({ day: dayNum, title: `วันก่อนทริป`, date: '', emoji: '📌', events: [] })
+              newPlan.days.forEach((d, i) => { d.day = i + 1 })
+              setPlan(newPlan); setActiveDay(0)
+              lastSaveTimeRef.current = Date.now()
+              await fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
+            }}
+              style={{ flexShrink: 0, width: '32px', height: '50px', borderRadius: '10px', border: '1.5px dashed rgba(14,165,233,0.3)', background: 'rgba(14,165,233,0.05)', color: '#0EA5E9', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontFamily: 'inherit' }}
+              title="เพิ่มวันก่อนหน้า">+</button>
+          )}
           {plan.days.map((d, i) => (
             <button key={i} className="day-tab" onClick={() => setActiveDay(i)}
               style={{ background: i === activeDay ? COLORS[i % 7] : 'rgba(255,255,255,0.6)', color: i === activeDay ? 'white' : '#0C4A6E', borderColor: i === activeDay ? COLORS[i % 7] : 'rgba(14,165,233,0.1)' }}>
@@ -1980,6 +1993,18 @@ export default function TripPage() {
               <div style={{ fontSize: '10px', opacity: .8 }}>{d.date}</div>
             </button>
           ))}
+          {(isOwner || !isGuest) && (
+            <button onClick={async () => {
+              const newPlan = JSON.parse(JSON.stringify(plan))
+              const newDay = { day: newPlan.days.length + 1, title: `วัน ${newPlan.days.length + 1}`, date: '', emoji: '📌', events: [] }
+              newPlan.days.push(newDay)
+              setPlan(newPlan); setActiveDay(newPlan.days.length - 1)
+              lastSaveTimeRef.current = Date.now()
+              await fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
+            }}
+              style={{ flexShrink: 0, width: '32px', height: '50px', borderRadius: '10px', border: '1.5px dashed rgba(14,165,233,0.3)', background: 'rgba(14,165,233,0.05)', color: '#0EA5E9', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', fontFamily: 'inherit' }}
+              title="เพิ่มวันต่อท้าย">+</button>
+          )}
         </div>
 
         {/* Search bar */}
