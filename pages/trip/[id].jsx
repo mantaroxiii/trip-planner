@@ -584,7 +584,10 @@ export default function TripPage() {
     const [dayIdx, evIdx] = key.split('-').map(Number)
     if (plan?.days?.[dayIdx]?.events?.[evIdx]) {
       const newPlan = JSON.parse(JSON.stringify(plan))
+      const userName = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'Unknown'
       newPlan.days[dayIdx].events[evIdx].images = allImgs
+      newPlan.days[dayIdx].events[evIdx].imageUploadedBy = userName
+      newPlan.days[dayIdx].events[evIdx].imageUploadedAt = new Date().toISOString()
       setPlan(newPlan)
       lastSaveTimeRef.current = Date.now()
       await fetch(`/api/trips/${id}`, {
@@ -727,6 +730,7 @@ export default function TripPage() {
 
   const saveInlineEdit = async (dayIdx, evIdx) => {
     let newPlan = JSON.parse(JSON.stringify(plan))
+    const userName = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'Unknown'
     newPlan.days[dayIdx].events[evIdx] = {
       ...newPlan.days[dayIdx].events[evIdx],
       title: editTitle,
@@ -734,6 +738,8 @@ export default function TripPage() {
       detail: editDetail,
       location: editLocation || undefined,
       icon: editIcon || undefined,
+      updatedBy: userName,
+      updatedAt: new Date().toISOString(),
     }
     // Save note before sorting (so it's in noteMap for remapping)
     const key = dayIdx + '-' + evIdx
@@ -756,7 +762,8 @@ export default function TripPage() {
 
   const addNewEvent = async (dayIdx) => {
     const newPlan = JSON.parse(JSON.stringify(plan))
-    const newEvent = { time: '', title: '', detail: '', type: 'กิจกรรม', icon: '📌' }
+    const userName = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'Unknown'
+    const newEvent = { time: '', title: '', detail: '', type: 'กิจกรรม', icon: '📌', createdBy: userName, createdAt: new Date().toISOString() }
     newPlan.days[dayIdx].events.push(newEvent)
     setPlan(newPlan)
     const newIdx = newPlan.days[dayIdx].events.length - 1
@@ -2169,6 +2176,14 @@ export default function TripPage() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '13px', fontWeight: '700', color: '#0C4A6E', textDecoration: isDone ? 'line-through' : 'none' }}>{ev.title}</div>
                           {ev.detail && <div style={{ fontSize: '12px', color: ev.warning ? '#d97706' : '#38BDF8', marginTop: '2px' }}>{ev.detail}</div>}
+                          {/* Attribution */}
+                          {(ev.createdBy || ev.updatedBy || ev.imageUploadedBy) && (
+                            <div style={{ fontSize: '9px', color: '#94A3B8', marginTop: '2px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              {ev.createdBy && <span>👤 {ev.createdBy}</span>}
+                              {ev.updatedBy && <span>✏️ {ev.updatedBy} {ev.updatedAt ? new Date(ev.updatedAt).toLocaleString('th-TH', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span>}
+                              {ev.imageUploadedBy && <span>📷 {ev.imageUploadedBy}</span>}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
                             <span style={{ display: 'inline-block', fontSize: '10px', padding: '2px 8px', borderRadius: '99px', background: light, color: col, fontWeight: '700', border: `1px solid ${col}33` }}>{ev.type}</span>
                             {ev.location && (
