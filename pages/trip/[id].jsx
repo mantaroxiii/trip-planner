@@ -335,8 +335,12 @@ export default function TripPage() {
     if (plan && id) localStorage.setItem(`plan-${id}`, JSON.stringify(plan))
   }, [plan, id])
 
-  // 3. Realtime — track last saved plan to avoid resetting on self-updates
+  // 3. Realtime — skip self-triggered updates using timestamp debounce
   const lastSavedPlanRef = useRef(null)
+  const lastSaveTimeRef = useRef(0)
+  const planRef = useRef(plan)
+  useEffect(() => { planRef.current = plan }, [plan])
+
   useEffect(() => {
     if (!trip?.id) return
     const channel = supabase
@@ -344,15 +348,11 @@ export default function TripPage() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips', filter: `id=eq.${trip.id}` }, (payload) => {
         const updated = payload.new
         if (updated.plan_json) {
+          // Skip any updates within 3 seconds of our own save
+          if (Date.now() - lastSaveTimeRef.current < 3000) return
           const incoming = JSON.stringify(updated.plan_json)
-          // Skip if this is our own save (plan matches what we just saved)
-          if (lastSavedPlanRef.current && incoming === lastSavedPlanRef.current) {
-            lastSavedPlanRef.current = null
-            return
-          }
-          if (incoming !== JSON.stringify(plan)) {
+          if (incoming !== JSON.stringify(planRef.current)) {
             setPlan(updated.plan_json)
-            // Don't reset activeDay — keep user on the current day
             setEditNotif('✏️ มีการอัปเดต plan')
             setTimeout(() => setEditNotif(''), 4000)
           }
@@ -642,7 +642,7 @@ export default function TripPage() {
     newPlan = sortEventsByTime(newPlan, dayIdx)
     setPlan(newPlan)
     setEditingKey(null)
-    lastSavedPlanRef.current = JSON.stringify(newPlan)
+    lastSaveTimeRef.current = Date.now()
     await fetch(`/api/trips/${id}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
@@ -663,7 +663,7 @@ export default function TripPage() {
     setEditDetail('')
     setEditLocation('')
     setEditNote('')
-    lastSavedPlanRef.current = JSON.stringify(newPlan)
+    lastSaveTimeRef.current = Date.now()
     await fetch(`/api/trips/${id}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
@@ -1926,7 +1926,7 @@ export default function TripPage() {
                           <button className="btn-ghost" style={{ flex: 1, padding: '7px' }} onClick={() => setEditingKey(null)}>ยกเลิก</button>
                           {isOwner && (
                             <button style={{ padding: '7px 12px', background: 'rgba(239,68,68,0.1)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px', cursor: 'pointer', fontSize: '12px', fontWeight: '700', fontFamily: 'inherit' }}
-                              onClick={() => { if (confirm('ลบกิจกรรมนี้?')) { const newPlan = JSON.parse(JSON.stringify(plan)); newPlan.days[activeDay].events.splice(ei, 1); setPlan(newPlan); setEditingKey(null); fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) }) } }}>
+                              onClick={() => { if (confirm('ลบกิจกรรมนี้?')) { const newPlan = JSON.parse(JSON.stringify(plan)); newPlan.days[activeDay].events.splice(ei, 1); setPlan(newPlan); setEditingKey(null); lastSaveTimeRef.current = Date.now(); fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) }) } }}>
                               🗑️ ลบ
                             </button>
                           )}
