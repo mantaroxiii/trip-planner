@@ -1,4 +1,4 @@
-const CACHE_NAME = 'trip-planner-v1'
+const CACHE_NAME = 'trip-planner-v2'
 
 // Files to cache for offline shell
 const SHELL_FILES = [

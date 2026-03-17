@@ -142,6 +142,8 @@ export default function TripPage() {
 
   // Members
   const [members, setMembers] = useState([])
+  const [memberLocations, setMemberLocations] = useState({})
+  const [sharingLocation, setSharingLocation] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
 
   // Flight & Hotel info
@@ -564,7 +566,47 @@ export default function TripPage() {
     })
   }
 
-  // Google Maps export per day
+  // Share my location
+  const shareMyLocation = async () => {
+    if (!session) return alert('กรุณาเข้าสู่ระบบก่อน')
+    if (!navigator.geolocation) return alert('เบราวเซอร์ไม่รองรับ GPS')
+    setSharingLocation(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await fetch('/api/location', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tripId: id, lat: pos.coords.latitude, lng: pos.coords.longitude })
+          })
+          await fetchMemberLocations()
+          setSharingLocation(false)
+        } catch (e) { setSharingLocation(false) }
+      },
+      (err) => { alert('ไม่สามารถเข้าถึงตำแหน่ง: ' + err.message); setSharingLocation(false) },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
+  const fetchMemberLocations = async () => {
+    if (!session) return
+    try {
+      const res = await fetch(`/api/location?tripId=${id}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      })
+      const data = await res.json()
+      if (data.locations) setMemberLocations(data.locations)
+    } catch (e) { }
+  }
+
+  const timeAgo = (dateStr) => {
+    const diff = (Date.now() - new Date(dateStr).getTime()) / 1000
+    if (diff < 60) return 'เมื่อกี้'
+    if (diff < 3600) return `${Math.floor(diff / 60)} นาทีที่แล้ว`
+    if (diff < 86400) return `${Math.floor(diff / 3600)} ชั่วโมงที่แล้ว`
+    return `${Math.floor(diff / 86400)} วันที่แล้ว`
+  }
+
   const exportDayToGoogleMaps = (dayIdx) => {
     const day = plan?.days?.[dayIdx]
     if (!day) return
@@ -1244,6 +1286,10 @@ export default function TripPage() {
             <div className="modal-sheet">
               <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
               <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '16px' }}>👥 สมาชิกทริป</div>
+              <button onClick={shareMyLocation} disabled={sharingLocation}
+                style={{ width: '100%', padding: '10px', marginBottom: '12px', background: sharingLocation ? 'rgba(16,185,129,0.1)' : 'linear-gradient(135deg,#065F46,#10B981)', border: 'none', color: sharingLocation ? '#10B981' : 'white', borderRadius: '12px', cursor: 'pointer', fontSize: '14px', fontWeight: '700', fontFamily: 'inherit' }}>
+                {sharingLocation ? '⏳ กำลังส่งตำแหน่ง...' : '📍 แชร์ตำแหน่งปัจจุบัน'}
+              </button>
               {members.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '20px', color: '#94A3B8', fontSize: '14px' }}>
                   ยังไม่มีสมาชิก · แชร์ลิงก์เพื่อเชิญเพื่อนร่วมทริป
@@ -1268,51 +1314,86 @@ export default function TripPage() {
                 </div>
               )}
               <button className="btn-ghost" style={{ width: '100%', marginTop: '16px' }} onClick={() => setShowMembers(false)}>ปิด</button>
+
+              {/* Member Locations */}
+              {Object.keys(memberLocations).length > 0 && (
+                <div style={{ marginTop: '16px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#0C4A6E', marginBottom: '8px' }}>📍 ตำแหน่งล่าสุด</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {Object.values(memberLocations).map((loc, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'linear-gradient(135deg, rgba(16,185,129,0.05), rgba(16,185,129,0.02))', borderRadius: '12px', border: '1px solid rgba(16,185,129,0.12)' }}>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'linear-gradient(135deg,#10B981,#34D399)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', color: 'white', fontWeight: '800', flexShrink: 0 }}>
+                          {loc.name?.[0]?.toUpperCase() || '?'}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#065F46' }}>{loc.name}</div>
+                          <div style={{ fontSize: '10px', color: '#64748B', marginTop: '1px' }}>🕒 {timeAgo(loc.updatedAt)}</div>
+                        </div>
+                        <a href={`https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`} target="_blank" rel="noopener noreferrer"
+                          style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.2)', color: '#10B981', borderRadius: '8px', padding: '4px 10px', fontSize: '11px', fontWeight: '700', textDecoration: 'none', flexShrink: 0 }}>
+                          🗺️ Maps
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        )}
-        {previewImage && (
-          <div onClick={() => setPreviewImage(null)}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', padding: '20px' }}>
-            <img src={previewImage} alt="preview"
-              style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }} />
-            <div style={{ position: 'absolute', top: '16px', right: '16px', color: 'white', fontSize: '28px', cursor: 'pointer', opacity: 0.8 }}>✕</div>
-          </div>
-        )}
+        )
+        }
+        {
+          previewImage && (
+            <div onClick={() => setPreviewImage(null)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out', padding: '20px' }}>
+              <img src={previewImage} alt="preview"
+                style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '12px', objectFit: 'contain', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }} />
+              <div style={{ position: 'absolute', top: '16px', right: '16px', color: 'white', fontSize: '28px', cursor: 'pointer', opacity: 0.8 }}>✕</div>
+            </div>
+          )
+        }
 
         {/* Notifications */}
-        {editNotif && (
-          <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(12,74,110,0.9)', backdropFilter: 'blur(8px)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(14,165,233,0.3)', border: '1px solid rgba(255,255,255,0.2)' }}>
-            {editNotif}
-          </div>
-        )}
-        {shareToast && (
-          <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg,#10B981,#34D399)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(16,185,129,0.35)' }}>
-            ✅ คัดลอก link แล้ว!
-          </div>
-        )}
-        {apiError && (
-          <div style={{ position: 'fixed', top: '60px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(185,28,28,0.95)', backdropFilter: 'blur(8px)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(185,28,28,0.3)', cursor: 'pointer', maxWidth: '90vw', textAlign: 'center' }}
-            onClick={() => setApiError('')}>
-            ⚠️ {apiError} · แตะเพื่อปิด
-          </div>
-        )}
+        {
+          editNotif && (
+            <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(12,74,110,0.9)', backdropFilter: 'blur(8px)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(14,165,233,0.3)', border: '1px solid rgba(255,255,255,0.2)' }}>
+              {editNotif}
+            </div>
+          )
+        }
+        {
+          shareToast && (
+            <div style={{ position: 'fixed', top: '16px', left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg,#10B981,#34D399)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(16,185,129,0.35)' }}>
+              ✅ คัดลอก link แล้ว!
+            </div>
+          )
+        }
+        {
+          apiError && (
+            <div style={{ position: 'fixed', top: '60px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(185,28,28,0.95)', backdropFilter: 'blur(8px)', color: 'white', padding: '8px 18px', borderRadius: '99px', fontSize: '13px', zIndex: 1000, boxShadow: '0 4px 16px rgba(185,28,28,0.3)', cursor: 'pointer', maxWidth: '90vw', textAlign: 'center' }}
+              onClick={() => setApiError('')}>
+              ⚠️ {apiError} · แตะเพื่อปิด
+            </div>
+          )
+        }
 
         {/* Role Banner */}
-        {!isOwner && (
-          isGuest ? (
-            <div style={{ background: 'linear-gradient(135deg,#F97316,#FB923C)', color: 'white', padding: '10px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>
-              👁️ คุณกำลังดูในฐานะ Guest ·
-              <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => router.push(`/login?next=/trip/${id}`)}>
-                สมัครสมาชิกเพื่อแก้ไขร่วมกัน →
-              </span>
-            </div>
-          ) : isMember ? (
-            <div style={{ background: 'linear-gradient(135deg,#10B981,#34D399)', color: 'white', padding: '8px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600' }}>
-              👥 คุณร่วมทริปนี้แล้ว · สามารถเพิ่ม note, ติ๊กกิจกรรม, ใส่งบประมาณได้
-            </div>
-          ) : null
-        )}
+        {
+          !isOwner && (
+            isGuest ? (
+              <div style={{ background: 'linear-gradient(135deg,#F97316,#FB923C)', color: 'white', padding: '10px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600' }}>
+                👁️ คุณกำลังดูในฐานะ Guest ·
+                <span style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => router.push(`/login?next=/trip/${id}`)}>
+                  สมัครสมาชิกเพื่อแก้ไขร่วมกัน →
+                </span>
+              </div>
+            ) : isMember ? (
+              <div style={{ background: 'linear-gradient(135deg,#10B981,#34D399)', color: 'white', padding: '8px 16px', textAlign: 'center', fontSize: '12px', fontWeight: '600' }}>
+                👥 คุณร่วมทริปนี้แล้ว · สามารถเพิ่ม note, ติ๊กกิจกรรม, ใส่งบประมาณได้
+              </div>
+            ) : null
+          )
+        }
 
         {/* Header */}
         <div style={{ background: 'linear-gradient(135deg,#0C4A6E,#0EA5E9)', color: 'white', padding: '16px', position: 'relative' }}>
@@ -1349,6 +1430,10 @@ export default function TripPage() {
                   </button>
                 ))}
               </div>
+              <button onClick={shareMyLocation} disabled={sharingLocation}
+                style={{ background: sharingLocation ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
+                {sharingLocation ? '⏳' : '📍'}
+              </button>
               <button onClick={copyShareLink}
                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '14px', fontWeight: '600', fontFamily: 'inherit' }}>
                 🔗 แชร์
@@ -1372,7 +1457,7 @@ export default function TripPage() {
                     style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontFamily: 'inherit' }}>
                     ⚙️
                   </button>
-                  <button onClick={() => setShowMembers(true)}
+                  <button onClick={() => { setShowMembers(true); fetchMemberLocations() }}
                     style={{ position: 'relative', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                     👥
                     {members.length > 0 && (
@@ -1395,65 +1480,69 @@ export default function TripPage() {
         </div>
 
         {/* Currency Converter Panel */}
-        {showConverter && (
-          <div style={{ background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', padding: '14px 16px', borderBottom: '1px solid rgba(245,158,11,0.2)' }}>
-            <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E' }}>💱 แปลงสกุลเงิน</div>
-                <select value={foreignCurrency} onChange={e => setForeignCurrency(e.target.value)}
-                  style={{ border: '1.5px solid #FCD34D', borderRadius: '8px', padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#92400E', background: 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  {Object.entries(CURRENCY_NAMES).map(([code, name]) => (
-                    <option key={code} value={code}>{name} ({code})</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '10px', fontWeight: '600', color: '#92400E', marginBottom: '4px', opacity: 0.7 }}>
-                    {convertDirection === 'foreign' ? foreignCurrency : '🇹🇭 THB'}
-                  </div>
-                  <input type="number" value={convertAmount} onChange={e => setConvertAmount(e.target.value)}
-                    placeholder="0" inputMode="decimal"
-                    style={{ width: '100%', border: '1.5px solid #FCD34D', borderRadius: '10px', padding: '10px 12px', fontSize: '18px', fontWeight: '700', color: '#92400E', background: 'white', outline: 'none', fontFamily: 'inherit' }} />
+        {
+          showConverter && (
+            <div style={{ background: 'linear-gradient(135deg,#FFFBEB,#FEF3C7)', padding: '14px 16px', borderBottom: '1px solid rgba(245,158,11,0.2)' }}>
+              <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#92400E' }}>💱 แปลงสกุลเงิน</div>
+                  <select value={foreignCurrency} onChange={e => setForeignCurrency(e.target.value)}
+                    style={{ border: '1.5px solid #FCD34D', borderRadius: '8px', padding: '4px 8px', fontSize: '12px', fontWeight: '600', color: '#92400E', background: 'white', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    {Object.entries(CURRENCY_NAMES).map(([code, name]) => (
+                      <option key={code} value={code}>{name} ({code})</option>
+                    ))}
+                  </select>
                 </div>
-                <button onClick={() => setConvertDirection(d => d === 'foreign' ? 'thb' : 'foreign')}
-                  style={{ background: '#F59E0B', border: 'none', borderRadius: '50%', width: '36px', height: '36px', color: 'white', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '14px' }}>⇄</button>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '10px', fontWeight: '600', color: '#92400E', marginBottom: '4px', opacity: 0.7 }}>
-                    {convertDirection === 'foreign' ? '🇹🇭 THB' : foreignCurrency}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#92400E', marginBottom: '4px', opacity: 0.7 }}>
+                      {convertDirection === 'foreign' ? foreignCurrency : '🇹🇭 THB'}
+                    </div>
+                    <input type="number" value={convertAmount} onChange={e => setConvertAmount(e.target.value)}
+                      placeholder="0" inputMode="decimal"
+                      style={{ width: '100%', border: '1.5px solid #FCD34D', borderRadius: '10px', padding: '10px 12px', fontSize: '18px', fontWeight: '700', color: '#92400E', background: 'white', outline: 'none', fontFamily: 'inherit' }} />
                   </div>
-                  <div style={{ border: '1.5px solid #FCD34D', borderRadius: '10px', padding: '10px 12px', fontSize: '18px', fontWeight: '700', color: '#92400E', background: 'rgba(255,255,255,0.6)', minHeight: '44px', display: 'flex', alignItems: 'center' }}>
-                    {exchangeRate && convertAmount ? (
-                      convertDirection === 'foreign'
-                        ? (parseFloat(convertAmount) * exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 2 })
-                        : (parseFloat(convertAmount) / exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 2 })
-                    ) : <span style={{ opacity: 0.3 }}>0</span>}
+                  <button onClick={() => setConvertDirection(d => d === 'foreign' ? 'thb' : 'foreign')}
+                    style={{ background: '#F59E0B', border: 'none', borderRadius: '50%', width: '36px', height: '36px', color: 'white', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '14px' }}>⇄</button>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '10px', fontWeight: '600', color: '#92400E', marginBottom: '4px', opacity: 0.7 }}>
+                      {convertDirection === 'foreign' ? '🇹🇭 THB' : foreignCurrency}
+                    </div>
+                    <div style={{ border: '1.5px solid #FCD34D', borderRadius: '10px', padding: '10px 12px', fontSize: '18px', fontWeight: '700', color: '#92400E', background: 'rgba(255,255,255,0.6)', minHeight: '44px', display: 'flex', alignItems: 'center' }}>
+                      {exchangeRate && convertAmount ? (
+                        convertDirection === 'foreign'
+                          ? (parseFloat(convertAmount) * exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 2 })
+                          : (parseFloat(convertAmount) / exchangeRate).toLocaleString('th-TH', { maximumFractionDigits: 2 })
+                      ) : <span style={{ opacity: 0.3 }}>0</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div style={{ fontSize: '11px', color: '#B45309', marginTop: '8px', textAlign: 'center', opacity: 0.8 }}>
-                {exchangeRate ? `1 ${foreignCurrency} = ${exchangeRate.toLocaleString('th-TH', { maximumFractionDigits: 4 })} THB` : '⏳ กำลังโหลดอัตราแลกเปลี่ยน...'}
+                <div style={{ fontSize: '11px', color: '#B45309', marginTop: '8px', textAlign: 'center', opacity: 0.8 }}>
+                  {exchangeRate ? `1 ${foreignCurrency} = ${exchangeRate.toLocaleString('th-TH', { maximumFractionDigits: 4 })} THB` : '⏳ กำลังโหลดอัตราแลกเปลี่ยน...'}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        }
         {/* Travel Info Cards */}
-        {(travelInfo.flights.length > 0 || travelInfo.hotels.length > 0) && (
-          <div style={{ padding: '8px 12px', display: 'flex', gap: '6px', overflowX: 'auto', background: 'rgba(255,255,255,0.3)' }}>
-            {travelInfo.flights.map((f, i) => (
-              <div key={`f${i}`} onClick={() => setShowTravelForm(true)} style={{ flexShrink: 0, background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', minWidth: '140px', border: '1px solid rgba(59,130,246,0.15)' }}>
-                <div style={{ fontSize: '12px', fontWeight: '800', color: '#1E40AF' }}>✈️ {f.airline} {f.flightNo}</div>
-                <div style={{ fontSize: '10px', color: '#3B82F6', marginTop: '2px' }}>🛥 {f.departure || '-'} → 🛤 {f.arrival || '-'}</div>
-              </div>
-            ))}
-            {travelInfo.hotels.map((h, i) => (
-              <div key={`h${i}`} onClick={() => setShowTravelForm(true)} style={{ flexShrink: 0, background: 'linear-gradient(135deg,#FFF7ED,#FEF3C7)', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', minWidth: '140px', border: '1px solid rgba(245,158,11,0.15)' }}>
-                <div style={{ fontSize: '12px', fontWeight: '800', color: '#92400E' }}>🏨 {h.name}</div>
-                <div style={{ fontSize: '10px', color: '#D97706', marginTop: '2px' }}>In {h.checkIn || '-'} Out {h.checkOut || '-'}</div>
-              </div>
-            ))}
-          </div>
-        )}
+        {
+          (travelInfo.flights.length > 0 || travelInfo.hotels.length > 0) && (
+            <div style={{ padding: '8px 12px', display: 'flex', gap: '6px', overflowX: 'auto', background: 'rgba(255,255,255,0.3)' }}>
+              {travelInfo.flights.map((f, i) => (
+                <div key={`f${i}`} onClick={() => setShowTravelForm(true)} style={{ flexShrink: 0, background: 'linear-gradient(135deg,#EFF6FF,#DBEAFE)', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', minWidth: '140px', border: '1px solid rgba(59,130,246,0.15)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#1E40AF' }}>✈️ {f.airline} {f.flightNo}</div>
+                  <div style={{ fontSize: '10px', color: '#3B82F6', marginTop: '2px' }}>🛥 {f.departure || '-'} → 🛤 {f.arrival || '-'}</div>
+                </div>
+              ))}
+              {travelInfo.hotels.map((h, i) => (
+                <div key={`h${i}`} onClick={() => setShowTravelForm(true)} style={{ flexShrink: 0, background: 'linear-gradient(135deg,#FFF7ED,#FEF3C7)', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', minWidth: '140px', border: '1px solid rgba(245,158,11,0.15)' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#92400E' }}>🏨 {h.name}</div>
+                  <div style={{ fontSize: '10px', color: '#D97706', marginTop: '2px' }}>In {h.checkIn || '-'} Out {h.checkOut || '-'}</div>
+                </div>
+              ))}
+            </div>
+          )
+        }
         {/* Day tabs */}
         <div style={{ display: 'flex', gap: '8px', padding: '10px 12px', overflowX: 'auto', background: 'rgba(255,255,255,0.5)', backdropFilter: 'blur(8px)', borderBottom: '1px solid rgba(14,165,233,0.1)' }}>
           {plan.days.map((d, i) => (
@@ -1750,7 +1839,7 @@ export default function TripPage() {
             {isOwner ? 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด ✏️ เพื่อแก้ไข · กด ✨ เพื่อให้ AI Suggest · กด 🔗 เพื่อแชร์' : isGuest ? '👁️ ดูอย่างเดียว · สมัครสมาชิกเพื่อแก้ไข' : 'แตะกิจกรรมเพื่อติ๊ก ✅ · กด 📝 เพื่อเพิ่ม note'}
           </div>
         </div>
-      </div>
+      </div >
     )
   }
 

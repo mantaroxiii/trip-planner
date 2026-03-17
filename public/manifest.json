@@ -4,6 +4,7 @@
     "description": "AI วางแผนเที่ยว · จัดกระเป๋า · พยากรณ์อากาศ",
     "start_url": "/trips",
     "display": "standalone",
+    "orientation": "portrait",
     "background_color": "#F0F9FF",
     "theme_color": "#0EA5E9",
     "icons": [
@@ -16,6 +17,12 @@
             "src": "/icon-512.png",
             "sizes": "512x512",
             "type": "image/png"
+        },
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
         }
     ]
 }
