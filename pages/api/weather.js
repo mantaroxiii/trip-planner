@@ -4,13 +4,14 @@
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).end()
 
-    const { destination, planTitle } = req.body
-    if (!destination && !planTitle) return res.status(400).json({ error: 'Missing destination' })
+    const { destination, planTitle, customCity } = req.body
+    if (!destination && !planTitle && !customCity) return res.status(400).json({ error: 'Missing destination' })
 
     try {
         // 1. Geocode destination — try multiple strategies
         let loc = null
         const queries = []
+        if (customCity) queries.unshift(customCity) // User-selected city goes first
         if (destination) queries.push(destination)
         // Try first word of destination (e.g. "คิวชู ญี่ปุ่น" → "คิวชู")
         if (destination && destination.includes(' ')) queries.push(destination.split(' ')[0])

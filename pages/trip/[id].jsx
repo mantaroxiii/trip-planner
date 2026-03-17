@@ -130,6 +130,8 @@ export default function TripPage() {
   const [pendingImages, setPendingImages] = useState({})
   const [previewImage, setPreviewImage] = useState(null)
   const [planWeather, setPlanWeather] = useState(null)
+  const [weatherCity, setWeatherCity] = useState('')
+  const [editingWeatherCity, setEditingWeatherCity] = useState(false)
 
   // UI state
   const [error, setError] = useState('')
@@ -429,7 +431,7 @@ export default function TripPage() {
       }
       if (t.destination || t.plan_json?.tripTitle) {
         fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination: t.destination, planTitle: t.plan_json?.tripTitle }) })
-          .then(r => r.json()).then(d => setPlanWeather(d)).catch(() => { })
+          .then(r => r.json()).then(d => { setPlanWeather(d); if (d.city) setWeatherCity(d.city) }).catch(() => { })
       }
     }
     else { setStep('draft') }
@@ -664,7 +666,7 @@ export default function TripPage() {
       // Fetch weather for plan view
       if (destination || data.tripTitle) {
         fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination, planTitle: data.tripTitle }) })
-          .then(r => r.json()).then(d => setPlanWeather(d)).catch(() => { })
+          .then(r => r.json()).then(d => { setPlanWeather(d); if (d.city) setWeatherCity(d.city) }).catch(() => { })
       }
     } catch (e) {
       setError(e.message); setStep('draft')
@@ -2095,6 +2097,27 @@ export default function TripPage() {
                         <span style={{ fontSize: '22px', fontWeight: '800' }}>{w.tempMax}°C</span>
                         <span style={{ fontSize: '14px', fontWeight: '600', opacity: 0.7 }}>/ {w.tempMin}°C</span>
                       </div>
+                      {/* City name + edit */}
+                      <div style={{ fontSize: '10px', opacity: 0.6, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {editingWeatherCity ? (
+                          <input value={weatherCity} onChange={e => setWeatherCity(e.target.value)}
+                            autoFocus onBlur={() => setEditingWeatherCity(false)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                setEditingWeatherCity(false)
+                                setPlanWeather(null)
+                                fetch('/api/weather', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customCity: weatherCity }) })
+                                  .then(r => r.json()).then(d => { setPlanWeather(d); if (d.city) setWeatherCity(d.city) }).catch(() => { })
+                              }
+                            }}
+                            style={{ background: 'rgba(255,255,255,0.3)', border: '1px solid rgba(255,255,255,0.5)', borderRadius: '6px', color: 'white', padding: '2px 6px', fontSize: '10px', width: '120px', fontFamily: 'inherit', outline: 'none' }}
+                            placeholder="ชื่อเมือง" />
+                        ) : (
+                          <span onClick={() => setEditingWeatherCity(true)} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }} title="กดเพื่อเปลี่ยนสถานที่">
+                            📍 {planWeather?.city || weatherCity}{planWeather?.country ? `, ${planWeather.country}` : ''}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {w.rainChance > 0 && (
                       <div style={{ textAlign: 'center', flexShrink: 0 }}>
@@ -2109,6 +2132,7 @@ export default function TripPage() {
                 ) : (
                   <div style={{ marginTop: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '10px', padding: '8px 12px', textAlign: 'center' }}>
                     <span style={{ fontSize: '12px', opacity: 0.6 }}>🌤️ พยากรณ์ยังไม่ถึงวันนี้ (ข้อมูลล่วงหน้า 16 วัน)</span>
+                    {planWeather?.city && <div style={{ fontSize: '10px', opacity: 0.4, marginTop: '2px' }}>📍 {planWeather.city}{planWeather?.country ? `, ${planWeather.country}` : ''} <span onClick={() => setEditingWeatherCity(true)} style={{ cursor: 'pointer', textDecoration: 'underline' }}>เปลี่ยนสถานที่</span></div>}
                   </div>
                 )
               })()}
