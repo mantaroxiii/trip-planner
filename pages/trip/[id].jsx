@@ -80,6 +80,10 @@ export default function TripPage() {
   const [editLocation, setEditLocation] = useState('')
   const [editNote, setEditNote] = useState('')
 
+  // Day title edit
+  const [editingDayTitle, setEditingDayTitle] = useState(false)
+  const [dayTitleDraft, setDayTitleDraft] = useState('')
+
   // AI Suggestion
   const [suggestingKey, setSuggestingKey] = useState(null)
   const [suggestions, setSuggestions] = useState([])
@@ -1820,7 +1824,24 @@ export default function TripPage() {
             <div style={{ background: `linear-gradient(135deg,${col},${col}CC)`, padding: '16px', color: 'white' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <div style={{ fontSize: '18px', fontWeight: '800' }}>{day.emoji || '📍'} {day.title}</div>
+                  {editingDayTitle && (isOwner || !isGuest) ? (
+                    <input value={dayTitleDraft} onChange={e => setDayTitleDraft(e.target.value)}
+                      autoFocus
+                      onBlur={() => {
+                        const newPlan = JSON.parse(JSON.stringify(plan)); newPlan.days[activeDay].title = dayTitleDraft; setPlan(newPlan); setEditingDayTitle(false);
+                        lastSaveTimeRef.current = Date.now();
+                        fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur() }}
+                      style={{ fontSize: '18px', fontWeight: '800', background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: '8px', color: 'white', padding: '4px 8px', width: '100%', fontFamily: 'inherit', outline: 'none' }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '18px', fontWeight: '800', cursor: (isOwner || !isGuest) ? 'pointer' : 'default' }}
+                      onClick={() => { if (isOwner || !isGuest) { setEditingDayTitle(true); setDayTitleDraft(day.title || '') } }}
+                      title={(isOwner || !isGuest) ? 'กดเพื่อแก้ไขชื่อวัน' : ''}>
+                      {day.emoji || '📍'} {day.title}
+                    </div>
+                  )}
                   {day.hotel && <div style={{ fontSize: '12px', opacity: .9, marginTop: '4px' }}>🏨 {day.hotel}</div>}
                 </div>
                 {/* Google Maps export */}
