@@ -335,19 +335,27 @@ export default function TripPage() {
     if (plan && id) localStorage.setItem(`plan-${id}`, JSON.stringify(plan))
   }, [plan, id])
 
-  // 3. Realtime
+  // 3. Realtime — track last saved plan to avoid resetting on self-updates
+  const lastSavedPlanRef = useRef(null)
   useEffect(() => {
     if (!trip?.id) return
     const channel = supabase
       .channel(`trip-${trip.id}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trips', filter: `id=eq.${trip.id}` }, (payload) => {
         const updated = payload.new
-        if (updated.plan_json && JSON.stringify(updated.plan_json) !== JSON.stringify(plan)) {
-          setPlan(updated.plan_json)
-          setActiveDay(0)
-          setStep('plan')
-          setEditNotif('✏️ มีการอัปเดต plan')
-          setTimeout(() => setEditNotif(''), 4000)
+        if (updated.plan_json) {
+          const incoming = JSON.stringify(updated.plan_json)
+          // Skip if this is our own save (plan matches what we just saved)
+          if (lastSavedPlanRef.current && incoming === lastSavedPlanRef.current) {
+            lastSavedPlanRef.current = null
+            return
+          }
+          if (incoming !== JSON.stringify(plan)) {
+            setPlan(updated.plan_json)
+            // Don't reset activeDay — keep user on the current day
+            setEditNotif('✏️ มีการอัปเดต plan')
+            setTimeout(() => setEditNotif(''), 4000)
+          }
         }
       }).subscribe()
     return () => supabase.removeChannel(channel)
@@ -634,6 +642,7 @@ export default function TripPage() {
     newPlan = sortEventsByTime(newPlan, dayIdx)
     setPlan(newPlan)
     setEditingKey(null)
+    lastSavedPlanRef.current = JSON.stringify(newPlan)
     await fetch(`/api/trips/${id}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
@@ -654,6 +663,7 @@ export default function TripPage() {
     setEditDetail('')
     setEditLocation('')
     setEditNote('')
+    lastSavedPlanRef.current = JSON.stringify(newPlan)
     await fetch(`/api/trips/${id}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
