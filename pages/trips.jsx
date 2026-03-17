@@ -89,6 +89,9 @@ export default function Trips() {
           <span style={{ fontSize: '13px', color: '#94a3b8', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {user?.email}
           </span>
+          {user?.email?.toLowerCase() === 'nathakorn.ted@gmail.com' && (
+            <button onClick={() => router.push('/admin')} style={{ ...S.signOutBtn, background: '#EDE9FE', color: '#7C3AED', borderColor: '#DDD6FE' }}>🛡️ Admin</button>
+          )}
           <button onClick={signOut} style={S.signOutBtn}>ออกจากระบบ</button>
         </div>
       </div>
