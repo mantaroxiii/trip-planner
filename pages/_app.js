@@ -37,9 +37,11 @@ export default function App({ Component, pageProps }) {
                 }
                 @media (min-width: 768px) {
                     .container-main { max-width: 800px; }
+                    html { font-size: 105%; }
                 }
                 @media (min-width: 1200px) {
                     .container-main { max-width: 960px; }
+                    html { font-size: 112%; }
                 }
 
                 /* ═══ DARK MODE ═══ */
