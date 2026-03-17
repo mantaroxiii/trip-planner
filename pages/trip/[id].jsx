@@ -2082,20 +2082,7 @@ export default function TripPage() {
                     🔄
                   </button>
                 )}
-                {isOwner && plan.days.length > 1 && (
-                  <button onClick={async () => {
-                    if (!confirm(`ลบ "${day.title}" ทั้งวัน? (${(day.events || []).length} กิจกรรม)`)) return
-                    const newPlan = JSON.parse(JSON.stringify(plan))
-                    newPlan.days.splice(activeDay, 1)
-                    const newActive = Math.min(activeDay, newPlan.days.length - 1)
-                    setPlan(newPlan); setActiveDay(newActive)
-                    lastSaveTimeRef.current = Date.now()
-                    await fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
-                  }}
-                    style={{ background: 'rgba(239,68,68,0.25)', border: '1px solid rgba(239,68,68,0.4)', color: '#FEE2E2', borderRadius: '10px', padding: '6px 12px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', fontFamily: 'inherit', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                    🗑️ ลบวัน
-                  </button>
-                )}
+
               </div>
               {/* ─── WEATHER BANNER ─── */}
               {(() => {
@@ -2372,6 +2359,20 @@ export default function TripPage() {
                   onMouseEnter={e => { e.currentTarget.style.background = `${col}20`; e.currentTarget.style.borderColor = `${col}88` }}
                   onMouseLeave={e => { e.currentTarget.style.background = `${col}10`; e.currentTarget.style.borderColor = `${col}44` }}>
                   + เพิ่มกิจกรรม
+                </button>
+              )}
+              {isOwner && plan.days.length > 1 && (
+                <button onClick={async () => {
+                  if (!confirm(`ลบ "${day.title}" ทั้งวัน? (มี ${(day.events || []).length} กิจกรรม)`)) return
+                  const newPlan = JSON.parse(JSON.stringify(plan))
+                  newPlan.days.splice(activeDay, 1)
+                  const newActive = Math.min(activeDay, newPlan.days.length - 1)
+                  setPlan(newPlan); setActiveDay(newActive)
+                  lastSaveTimeRef.current = Date.now()
+                  await fetch(`/api/trips/${id}`, { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plan_json: newPlan }) })
+                }}
+                  style={{ width: '100%', padding: '10px', background: 'rgba(239,68,68,0.06)', border: '1.5px dashed rgba(239,68,68,0.3)', borderRadius: '12px', color: '#EF4444', fontSize: '12px', fontWeight: '700', cursor: 'pointer', fontFamily: 'inherit', marginTop: '4px' }}>
+                  🗑️ ลบวันนี้ ({day.title})
                 </button>
               )}
             </div>
