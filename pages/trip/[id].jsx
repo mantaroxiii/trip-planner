@@ -1286,7 +1286,7 @@ export default function TripPage() {
           <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowTravelForm(false) }}>
             <div className="modal-sheet" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
               <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
-              <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '16px' }}>✈️ เที่ยวบิน & ที่พัก</div>
+              <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '16px' }}>✈️ เที่ยวบิน & ที่พัก & เอกสาร</div>
 
               {/* Existing Flights */}
               {travelInfo.flights.map((f, i) => (
@@ -1371,6 +1371,84 @@ export default function TripPage() {
 
               <button onClick={() => setShowTravelForm(false)}
                 className="btn-ghost" style={{ width: '100%', marginTop: '16px' }}>ปิด</button>
+
+              {/* Documents Section */}
+              <div style={{ borderTop: '2px solid rgba(14,165,233,0.1)', marginTop: '20px', paddingTop: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#0C4A6E' }}>📄 เอกสารสำคัญ</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#065F46', background: 'rgba(16,185,129,0.08)', padding: '3px 8px', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.15)' }}>
+                    🔐 AES-256 Encrypted
+                  </div>
+                </div>
+
+                {/* Add doc */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                  <input value={docLabel} onChange={e => setDocLabel(e.target.value)} placeholder="ชื่อ (เช่น Passport)"
+                    style={{ flex: 1, padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #BAE6FD', fontSize: '12px', fontFamily: 'inherit', outline: 'none' }} />
+                  <input value={docValue} onChange={e => setDocValue(e.target.value)} placeholder="ค่า (เช่น AB1234567)"
+                    onKeyDown={e => { if (e.key === 'Enter') addDoc() }}
+                    style={{ flex: 1, padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #BAE6FD', fontSize: '12px', fontFamily: 'inherit', outline: 'none' }} />
+                  <button onClick={addDoc}
+                    style={{ background: '#0EA5E9', color: 'white', border: 'none', borderRadius: '8px', padding: '7px 12px', cursor: 'pointer', fontSize: '14px', fontWeight: '700', fontFamily: 'inherit' }}>+</button>
+                </div>
+
+                {/* File upload */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', background: 'rgba(14,165,233,0.04)', border: '2px dashed rgba(14,165,233,0.15)', borderRadius: '10px', cursor: 'pointer', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '16px' }}>📎</span>
+                  <span style={{ fontSize: '12px', color: '#0369A1', fontWeight: '600' }}>แนบไฟล์ (รูป, PDF, เอกสาร)</span>
+                  <input type="file" accept="image/*,.pdf,.doc,.docx" multiple style={{ display: 'none' }}
+                    onChange={e => {
+                      Array.from(e.target.files).forEach(file => {
+                        const reader = new FileReader()
+                        reader.onload = ev => {
+                          saveDocs([...tripDocs, { label: `📎 ${file.name}`, value: ev.target.result, isFile: true, fileType: file.type, fileName: file.name }])
+                        }
+                        reader.readAsDataURL(file)
+                      })
+                      e.target.value = ''
+                    }} />
+                </label>
+
+                {/* Document list */}
+                {tripDocs.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '16px', color: '#94A3B8', fontSize: '12px' }}>
+                    ยังไม่มีเอกสาร
+                    <div style={{ marginTop: '6px', fontSize: '11px', color: '#CBD5E1' }}>
+                      ตัวอย่าง: Booking Ref, Passport, ประกันภัย, WiFi Password, e-Ticket
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {tripDocs.map((doc, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(14,165,233,0.04)', borderRadius: '10px', border: '1px solid rgba(14,165,233,0.08)' }}>
+                        {doc.isFile ? (
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '600' }}>{doc.fileName}</div>
+                            {doc.fileType?.startsWith('image/') ? (
+                              <img src={doc.value} alt={doc.fileName} onClick={() => setPreviewImage(doc.value)}
+                                style={{ width: '100%', maxHeight: '120px', objectFit: 'cover', borderRadius: '8px', marginTop: '4px', cursor: 'pointer' }} />
+                            ) : (
+                              <a href={doc.value} download={doc.fileName}
+                                style={{ fontSize: '12px', color: '#0EA5E9', fontWeight: '600', marginTop: '4px', display: 'inline-block' }}>⬇️ ดาวน์โหลด</a>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '600' }}>{doc.label}</div>
+                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#0C4A6E', fontFamily: 'monospace', marginTop: '2px', wordBreak: 'break-all' }}>{doc.value}</div>
+                          </div>
+                        )}
+                        {!doc.isFile && (
+                          <button onClick={() => navigator.clipboard?.writeText(doc.value)}
+                            style={{ background: 'rgba(14,165,233,0.1)', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px', flexShrink: 0 }}>📋</button>
+                        )}
+                        <button onClick={() => removeDoc(i)}
+                          style={{ background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px', color: '#EF4444', flexShrink: 0 }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1498,7 +1576,7 @@ export default function TripPage() {
               ← Trips
             </button>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button onClick={() => setShowTravelForm(true)}
+              <button onClick={() => { setShowTravelForm(true); loadDocs() }}
                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer', fontSize: '18px', fontWeight: '600', fontFamily: 'inherit' }}>
                 ✈️
               </button>
@@ -1554,6 +1632,23 @@ export default function TripPage() {
             </div>
           </div>
         </div>
+
+        {/* Location Bar */}
+        {Object.keys(memberLocations).length > 0 && (
+          <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.06), rgba(16,185,129,0.02))', padding: '8px 16px', borderBottom: '1px solid rgba(16,185,129,0.1)', display: 'flex', gap: '8px', overflowX: 'auto', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', color: '#065F46', fontWeight: '700', flexShrink: 0 }}>📍</span>
+            {Object.values(memberLocations).map((loc, i) => (
+              <a key={i} href={`https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}`} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', background: 'white', borderRadius: '99px', border: '1px solid rgba(16,185,129,0.15)', textDecoration: 'none', flexShrink: 0, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ width: '20px', height: '20px', borderRadius: '99px', background: 'linear-gradient(135deg,#10B981,#34D399)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', color: 'white', fontWeight: '800' }}>
+                  {loc.name?.[0]?.toUpperCase() || '?'}
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#065F46' }}>{loc.name?.split(' ')[0]}</span>
+                <span style={{ fontSize: '9px', color: '#94A3B8' }}>{timeAgo(loc.updatedAt)}</span>
+              </a>
+            ))}
+          </div>
+        )}
 
         {/* Currency Converter Panel */}
         {
@@ -1991,57 +2086,7 @@ export default function TripPage() {
           </div>
         )}
 
-        {/* Documents Modal */}
-        {showDocs && (
-          <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowDocs(false) }}>
-            <div className="modal-sheet" style={{ maxHeight: '85vh', overflow: 'auto' }}>
-              <div style={{ width: '40px', height: '4px', background: '#BAE6FD', borderRadius: '99px', margin: '0 auto 20px' }} />
-              <div style={{ fontSize: '20px', fontWeight: '800', color: '#0C4A6E', marginBottom: '8px' }}>📄 เอกสารและข้อมูลสำคัญ</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: 'linear-gradient(135deg, rgba(16,185,129,0.08), rgba(16,185,129,0.03))', borderRadius: '8px', border: '1px solid rgba(16,185,129,0.15)', marginBottom: '14px' }}>
-                <span style={{ fontSize: '14px' }}>🔐</span>
-                <span style={{ fontSize: '11px', color: '#065F46', fontWeight: '600' }}>เข้ารหัส AES-256 · เก็บเฉพาะในเครื่องคุณ · ไม่แชร์กับผู้อื่น</span>
-              </div>
 
-
-              {/* Add new doc */}
-              <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                <input value={docLabel} onChange={e => setDocLabel(e.target.value)} placeholder="ชื่อ (เช่น Booking Ref)"
-                  style={{ flex: 1, padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #BAE6FD', fontSize: '12px', fontFamily: 'inherit', outline: 'none' }} />
-                <input value={docValue} onChange={e => setDocValue(e.target.value)} placeholder="ค่า (เช่น HK-12345)"
-                  onKeyDown={e => { if (e.key === 'Enter') addDoc() }}
-                  style={{ flex: 1, padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #BAE6FD', fontSize: '12px', fontFamily: 'inherit', outline: 'none' }} />
-                <button onClick={addDoc}
-                  style={{ background: '#0EA5E9', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', fontFamily: 'inherit' }}>+</button>
-              </div>
-
-              {/* Document list */}
-              {tripDocs.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px', color: '#94A3B8', fontSize: '13px' }}>
-                  ยังไม่มีเอกสาร · เพิ่มข้อมูลด้านบน
-                  <div style={{ marginTop: '10px', fontSize: '12px', color: '#CBD5E1' }}>
-                    📝 ตัวอย่าง: Booking Ref, Passport No., เบอร์ฉุกเฉิน, ประกันภัย, WiFi Password
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {tripDocs.map((doc, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', background: 'rgba(14,165,233,0.04)', borderRadius: '10px', border: '1px solid rgba(14,165,233,0.08)' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '11px', color: '#64748B', fontWeight: '600' }}>{doc.label}</div>
-                        <div style={{ fontSize: '14px', fontWeight: '700', color: '#0C4A6E', fontFamily: 'monospace', marginTop: '2px', wordBreak: 'break-all' }}>{doc.value}</div>
-                      </div>
-                      <button onClick={() => { navigator.clipboard?.writeText(doc.value); }}
-                        style={{ background: 'rgba(14,165,233,0.1)', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px' }}>📋</button>
-                      <button onClick={() => removeDoc(i)}
-                        style={{ background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '12px', color: '#EF4444' }}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <button className="btn-ghost" style={{ width: '100%', marginTop: '16px' }} onClick={() => setShowDocs(false)}>ปิด</button>
-            </div>
-          </div>
-        )}
       </div>
     )
   }
