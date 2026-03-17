@@ -19,7 +19,7 @@ export default async function handler(req, res) {
 
 ตอบตาม context ของทริปนี้ ให้คำแนะนำที่เฉพาะเจาะจง ถ้ามีเรื่องเกี่ยวกับสถานที่ ให้แนะนำชื่อจริง ราคาประมาณ วิธีไป
 ถ้าถามเรื่องฉุกเฉิน ให้ข้อมูลเบอร์ตำรวจ สถานทูต โรงพยาบาลของประเทศนั้น
-ตอบสั้นกระชับ ไม่เกิน 200 คำ`
+ตอบให้ครบถ้วน ใช้ bullet points ให้อ่านง่าย`
 
     const contents = []
     // Add history
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
                 system_instruction: { parts: [{ text: systemPrompt }] },
                 contents,
-                generationConfig: { temperature: 0.8, maxOutputTokens: 1024 }
+                generationConfig: { temperature: 0.8, maxOutputTokens: 4096 }
             })
         })
         const data = await r.json()
