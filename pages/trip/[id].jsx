@@ -404,9 +404,26 @@ export default function TripPage() {
     const headers = {}
     if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
     const adminParam = router.query.adminView === 'true' ? '?adminView=true' : ''
-    const res = await fetch(`/api/trips/${id}${adminParam}`, { headers })
-    if (!res.ok) { router.replace('/trips'); return }
-    const { trip: t, role, members: m } = await res.json()
+    let tripData = null
+    try {
+      const res = await fetch(`/api/trips/${id}${adminParam}`, { headers })
+      if (!res.ok) {
+        // Try offline cache before redirecting
+        const cached = localStorage.getItem(`offline-trip-${id}`)
+        if (cached) { tripData = JSON.parse(cached) }
+        else { router.replace('/trips'); return }
+      } else {
+        tripData = await res.json()
+        // Save to offline cache
+        try { localStorage.setItem(`offline-trip-${id}`, JSON.stringify(tripData)) } catch(e) {}
+      }
+    } catch (e) {
+      // Network error — try offline cache
+      const cached = localStorage.getItem(`offline-trip-${id}`)
+      if (cached) { tripData = JSON.parse(cached); setEditNotif('📡 โหมดออฟไลน์ · ดูข้อมูลจาก cache'); setTimeout(() => setEditNotif(''), 5000) }
+      else { router.replace('/trips'); return }
+    }
+    const { trip: t, role, members: m } = tripData
     setTrip(t)
     setTripRole(role || 'viewer')
     const owner = role === 'owner'
