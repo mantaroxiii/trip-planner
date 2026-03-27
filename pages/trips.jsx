@@ -12,10 +12,12 @@ export default function Trips() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (!s) { router.replace('/login'); return }
-      setUser(s.user)
-      setSession(s)
-      fetchTrips(s.access_token)
+      if (!s && navigator.onLine) { router.replace('/login'); return }
+      if (s) {
+        setUser(s.user)
+        setSession(s)
+      }
+      fetchTrips(s?.access_token || '')
     })
   }, [])
 

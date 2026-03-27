@@ -7,10 +7,11 @@ export default function Index() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.replace('/trips')
-      } else {
+      // If offline, always go to trips to try loading from cache.
+      if (!session && navigator.onLine) {
         router.replace('/login')
+      } else {
+        router.replace('/trips')
       }
     })
   }, [])
