@@ -140,6 +140,7 @@ export default function TripPage() {
   const [editNotif, setEditNotif] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [confirmGenerate, setConfirmGenerate] = useState(false)
+  const [isPrinting, setIsPrinting] = useState(false)
 
   // AI provider
   const [provider, setProvider] = useState('gemini')
@@ -929,6 +930,45 @@ export default function TripPage() {
     if (chunks.length > 1) alert(`มี ${locs.length} จุด แบ่งเป็น ${chunks.length} ช่วง เปิด Google Maps ${chunks.length} แท็บ`)
   }
 
+  // Exports
+  const exportToCSV = () => {
+    if (!plan) return
+    const rows = [['Day', 'Date', 'Time', 'Type', 'Title', 'Detail', 'Location', 'Cost']]
+    plan.days.forEach((d, di) => {
+      ;(d.events || []).forEach((ev, ei) => {
+        const expensesArr = expenses[`${di}-${ei}`] || []
+        const costStr = expensesArr.map(e => `${e.amount} ${e.currency}`).join(', ')
+        rows.push([
+          `Day ${d.day}`,
+          d.date || '',
+          ev.time || '',
+          ev.type || '',
+          `"${(ev.title || '').replace(/"/g, '""')}"`,
+          `"${(ev.detail || '').replace(/"/g, '""')}"`,
+          `"${(ev.location || '').replace(/"/g, '""')}"`,
+          `"${costStr}"`
+        ])
+      })
+    })
+    const csvContent = "\uFEFF" + rows.map(e => e.join(",")).join("\n")
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.setAttribute("href", url)
+    link.setAttribute("download", `${plan.tripTitle || 'Trip'}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const exportToPDF = () => {
+    setIsPrinting(true)
+    setTimeout(() => {
+      window.print()
+      setIsPrinting(false)
+    }, 500)
+  }
+
   // AI Chat
   const sendChatMessage = async () => {
     if (!chatInput.trim() || chatLoading) return
@@ -1111,7 +1151,55 @@ export default function TripPage() {
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
     .budget-tag { display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:700; padding:2px 6px; border-radius:6px; background:rgba(245,158,11,0.12); color:#D97706; cursor:pointer; transition:all 0.2s; }
     .budget-tag:hover { background:rgba(245,158,11,0.2); transform:scale(1.05); }
+    @media print {
+      button, input, textarea, .modal-overlay, .modal-sheet { display: none !important; }
+      body { background: white !important; }
+      .container-main { margin-top: 0 !important; }
+      .event-card { break-inside: avoid; border: 1px solid #ccc !important; box-shadow: none !important; }
+      ::-webkit-scrollbar { display: none; }
+    }
   `
+
+  // Print View
+  if (isPrinting) {
+    return (
+      <div style={{ padding: '20px', fontFamily: "'Plus Jakarta Sans',sans-serif", color: '#000', background: 'white' }}>
+        <style>{`
+          @media print {
+            @page { margin: 15mm; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white; margin: 0; }
+          }
+        `}</style>
+        <h1 style={{ fontSize: '24px', marginBottom: '4px', color: '#0C4A6E' }}>{plan?.tripTitle || destination}</h1>
+        <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '20px' }}>{dates}</p>
+
+        {plan?.days?.map((day, di) => (
+          <div key={di} style={{ marginBottom: '30px', pageBreakInside: 'avoid' }}>
+            <h2 style={{ fontSize: '18px', color: '#0369A1', borderBottom: '2px solid #e2e8f0', paddingBottom: '8px', marginBottom: '12px' }}>
+              {day.emoji} วัน {day.day} - {day.title} <span style={{ fontSize: '14px', color: '#94a3b8', fontWeight: 'normal' }}>({day.date})</span>
+            </h2>
+            <div style={{ paddingLeft: '10px' }}>
+              {day.events?.map((ev, ei) => {
+                const expensesArr = expenses[`${di}-${ei}`] || []
+                const costStr = expensesArr.map(e => `${e.amount} ${e.currency}`).join(', ')
+                return (
+                  <div key={ei} style={{ display: 'flex', gap: '12px', marginBottom: '12px', pageBreakInside: 'avoid' }}>
+                    <div style={{ width: '55px', flexShrink: 0, fontWeight: 'bold', color: '#0ea5e9', fontSize: '14px', marginTop: '2px' }}>{ev.time || '--:--'}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', color: '#0f172a', fontSize: '15px' }}>{ev.icon} {ev.title}</div>
+                      {ev.detail && <div style={{ fontSize: '13px', color: '#475569', marginTop: '4px', whiteSpace: 'pre-wrap' }}>{ev.detail}</div>}
+                      {ev.location && <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>📍 {ev.location}</div>}
+                      {costStr && <div style={{ fontSize: '12px', color: '#f59e0b', marginTop: '4px', fontWeight: '600' }}>💰 {costStr}</div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   /* ─── LOADING ─── */
   if (step === 'loading') return (
@@ -2516,8 +2604,16 @@ export default function TripPage() {
                       if (navigator.share) navigator.share({ title: trip?.title || 'Trip Plan', text }).catch(() => { })
                       else { navigator.clipboard.writeText(text); alert('คัดลอกแผนทริปแล้ว!') }
                     }}>
-                    📤 แชร์/Export แผนทริป
+                    📤 แชร์ข้อความ
                   </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn-ghost" style={{ fontSize: '13px', flex: 1 }} onClick={exportToCSV}>
+                      📥 Export CSV
+                    </button>
+                    <button className="btn-ghost" style={{ fontSize: '13px', flex: 1 }} onClick={exportToPDF}>
+                      📄 Export PDF
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -2555,8 +2651,16 @@ export default function TripPage() {
                       if (navigator.share) navigator.share({ title: trip?.title || 'Trip Plan', text }).catch(() => { })
                       else { navigator.clipboard.writeText(text); alert('คัดลอกแผนทริปแล้ว!') }
                     }}>
-                    📤 แชร์/Export แผนทริป
+                    📤 แชร์ข้อความ
                   </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn-ghost" style={{ fontSize: '13px', flex: 1 }} onClick={exportToCSV}>
+                      📥 Export CSV
+                    </button>
+                    <button className="btn-ghost" style={{ fontSize: '13px', flex: 1 }} onClick={exportToPDF}>
+                      📄 Export PDF
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
